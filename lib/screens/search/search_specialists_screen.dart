@@ -1,6 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../../services/api/service.dart';
+import '../../widgets/search_header.dart';
+import '../../widgets/search_results.dart';
+import '../../widgets/recent_searches.dart';
+import '../../widgets/no_results.dart';
+import '../../widgets/filter_bottom_sheet.dart';
 
 class SearchSpecialistsScreen extends StatefulWidget {
   const SearchSpecialistsScreen({super.key});
@@ -13,16 +18,23 @@ class _SearchSpecialistsScreenState extends State<SearchSpecialistsScreen> {
   final _searchController = TextEditingController();
   final _focusNode = FocusNode();
 
+  // Data state
   List<String> recentSearches = [];
   List<Map<String, dynamic>> searchResults = [];
   List<Map<String, String>> categories = [];
   List<Map<String, String>> subcategories = [];
   List<Map<String, dynamic>> cities = [];
+  Set<String> favoriteServices = {};
 
+  // UI state
   bool isLoading = false;
   bool hasSearched = false;
+  bool isLoadingMore = false;
+  bool hasMoreData = true;
+  int currentPage = 1;
+  int totalResults = 0;
 
-  // Filter values
+  // Filter state
   String? selectedCategoryId;
   String? selectedSubcategoryId;
   String? selectedCityId;
@@ -31,15 +43,12 @@ class _SearchSpecialistsScreenState extends State<SearchSpecialistsScreen> {
   int? selectedRating;
 
   static const String _recentSearchesKey = 'recent_searches';
+  static const int _pageSize = 20;
 
   @override
   void initState() {
     super.initState();
-    _loadRecentSearches();
-    _loadInitialData();
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      _focusNode.requestFocus();
-    });
+    _initialize();
   }
 
   @override
@@ -49,38 +58,182 @@ class _SearchSpecialistsScreenState extends State<SearchSpecialistsScreen> {
     super.dispose();
   }
 
+  // INITIALIZATION
+  Future<void> _initialize() async {
+    await Future.wait([
+      _loadRecentSearches(),
+      _loadInitialData(),
+    ]);
+    await _loadInitialServices();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _focusNode.requestFocus();
+    });
+  }
+
   Future<void> _loadInitialData() async {
     try {
-      final categoriesData = await ApiService.category.getCategories();
-      final citiesData = await ApiService.location.getRegionsWithCities();
+      final results = await Future.wait([
+        ApiService.category.getCategories(),
+        ApiService.location.getRegionsWithCities(),
+      ]);
 
       setState(() {
-        categories = categoriesData;
-        cities = citiesData;
+        categories = results[0] as List<Map<String, String>>;
+        cities = results[1] as List<Map<String, dynamic>>;
       });
+
+      _logDataLoaded();
     } catch (e) {
       print('Ошибка загрузки данных: $e');
     }
   }
 
-  Future<void> _loadSubcategories(String categoryId) async {
-    try {
-      final subcategoriesData = await ApiService.subcategory.getSubcategoriesByCategory(categoryId);
-      setState(() {
-        subcategories = subcategoriesData;
-        selectedSubcategoryId = null; // Reset subcategory when category changes
-      });
-    } catch (e) {
-      print('Ошибка загрузки подкатегорий: $e');
+  void _logDataLoaded() {
+    print('Загружено категорий: ${categories.length}');
+    print('Загружено городов: ${cities.length}');
+    if (categories.isNotEmpty) print('Первая категория: ${categories.first}');
+    if (cities.isNotEmpty) print('Первый город: ${cities.first}');
+  }
+
+  // API RESPONSE HANDLING
+  ({List<Map<String, dynamic>> services, int total}) _parseApiResponse(dynamic response) {
+    List<Map<String, dynamic>> services = [];
+    int total = 0;
+
+    if (response is Map<String, dynamic>) {
+      final servicesList = response['services'] as List<dynamic>?;
+      services = servicesList?.map<Map<String, dynamic>>(_mapToService).toList() ?? [];
+
+      final rawTotal = response['total'];
+      total = rawTotal is int ? rawTotal : int.tryParse(rawTotal?.toString() ?? '0') ?? 0;
+    } else if (response is List<dynamic>) {
+      services = response.map<Map<String, dynamic>>(_mapToService).toList();
+      total = services.length;
+    }
+
+    return (services: services, total: total);
+  }
+
+  Map<String, dynamic> _mapToService(dynamic item) {
+    if (item is Map<String, dynamic>) {
+      return item;
+    } else if (item is Map) {
+      return Map<String, dynamic>.from(item);
+    } else {
+      throw Exception('Invalid service item type: ${item.runtimeType}');
     }
   }
 
+  // SEARCH AND LOADING
+  Future<void> _loadInitialServices() async {
+    await _performSearch(resetPage: true, showLoading: true);
+  }
+
+  Future<void> _performSearch({
+    String? query,
+    bool resetPage = true,
+    bool showLoading = false,
+  }) async {
+    final searchQuery = query ?? _searchController.text.trim();
+
+    _updateLoadingState(resetPage, showLoading);
+
+    if (resetPage && searchQuery.isNotEmpty) {
+      await _updateSearchHistory(searchQuery);
+    }
+
+    try {
+      final queryParams = _buildQueryParams(searchQuery);
+      print('Параметры поиска (страница $currentPage): $queryParams');
+
+      final response = await ApiService.service.searchServices(queryParams);
+      print('Ответ API: $response');
+
+      final parsed = _parseApiResponse(response);
+      final filteredServices = _applyClientFilters(parsed.services);
+
+      print('Получено услуг: ${parsed.services.length}, всего: ${parsed.total}');
+      if (minPrice > 0) print('После фильтрации по minPrice ($minPrice): ${filteredServices.length}');
+
+      _updateSearchResults(filteredServices, parsed.total, resetPage);
+    } catch (e) {
+      print('Ошибка поиска: $e');
+      _handleSearchError(resetPage);
+    }
+  }
+
+  void _updateLoadingState(bool resetPage, bool showLoading) {
+    setState(() {
+      if (resetPage) {
+        isLoading = showLoading;
+        hasSearched = true;
+        currentPage = 1;
+        hasMoreData = true;
+      } else {
+        isLoadingMore = true;
+      }
+    });
+  }
+
+  Map<String, dynamic> _buildQueryParams(String searchQuery) {
+    final queryParams = <String, dynamic>{
+      'page': currentPage.toString(),
+      'limit': _pageSize.toString(),
+    };
+
+    if (searchQuery.isNotEmpty) queryParams['search'] = searchQuery;
+    if (selectedCategoryId != null) queryParams['categoryId'] = selectedCategoryId;
+    if (selectedSubcategoryId != null) queryParams['subcategoryId'] = selectedSubcategoryId;
+    if (selectedCityId != null) queryParams['cityId'] = selectedCityId;
+    if (maxPrice < 100000) queryParams['price'] = maxPrice.toString();
+
+    return queryParams;
+  }
+
+  List<Map<String, dynamic>> _applyClientFilters(List<Map<String, dynamic>> services) {
+    if (minPrice <= 0) return services;
+
+    return services.where((service) {
+      final servicePrice = double.tryParse(service['price']?.toString() ?? '0') ?? 0;
+      return servicePrice >= minPrice;
+    }).toList();
+  }
+
+  void _updateSearchResults(List<Map<String, dynamic>> services, int total, bool resetPage) {
+    setState(() {
+      if (resetPage) {
+        searchResults = services;
+      } else {
+        searchResults.addAll(services);
+      }
+      totalResults = total;
+      isLoading = false;
+      isLoadingMore = false;
+      hasMoreData = services.length >= _pageSize;
+      if (!resetPage) currentPage++;
+    });
+  }
+
+  void _handleSearchError(bool resetPage) {
+    setState(() {
+      if (resetPage) searchResults = [];
+      isLoading = false;
+      isLoadingMore = false;
+      hasMoreData = false;
+    });
+  }
+
+  Future<void> _loadMoreServices() async {
+    if (isLoadingMore || !hasMoreData) return;
+    currentPage++;
+    await _performSearch(resetPage: false);
+  }
+
+  // SEARCH HISTORY
   Future<void> _loadRecentSearches() async {
     final prefs = await SharedPreferences.getInstance();
     final searches = prefs.getStringList(_recentSearchesKey) ?? [];
-    setState(() {
-      recentSearches = searches;
-    });
+    setState(() => recentSearches = searches);
   }
 
   Future<void> _saveRecentSearches() async {
@@ -88,84 +241,85 @@ class _SearchSpecialistsScreenState extends State<SearchSpecialistsScreen> {
     await prefs.setStringList(_recentSearchesKey, recentSearches);
   }
 
+  Future<void> _updateSearchHistory(String searchQuery) async {
+    if (!recentSearches.contains(searchQuery)) {
+      setState(() {
+        recentSearches.insert(0, searchQuery);
+        if (recentSearches.length > 10) recentSearches.removeLast();
+      });
+    } else {
+      setState(() {
+        recentSearches.remove(searchQuery);
+        recentSearches.insert(0, searchQuery);
+      });
+    }
+    await _saveRecentSearches();
+  }
+
   Future<void> _clearAllRecentSearches() async {
-    setState(() {
-      recentSearches.clear();
-    });
+    setState(() => recentSearches.clear());
     final prefs = await SharedPreferences.getInstance();
     await prefs.remove(_recentSearchesKey);
   }
 
   Future<void> _removeRecentSearch(int index) async {
-    setState(() {
-      recentSearches.removeAt(index);
-    });
+    setState(() => recentSearches.removeAt(index));
     await _saveRecentSearches();
   }
 
-  Future<void> _performSearch([String? query]) async {
-    final searchQuery = query ?? _searchController.text.trim();
-    if (searchQuery.isEmpty && selectedCategoryId == null && selectedCityId == null) return;
-
-    setState(() {
-      isLoading = true;
-      hasSearched = true;
-    });
-
-    // Add to search history
-    if (searchQuery.isNotEmpty && !recentSearches.contains(searchQuery)) {
-      setState(() {
-        recentSearches.insert(0, searchQuery);
-        if (recentSearches.length > 10) {
-          recentSearches.removeLast();
-        }
-      });
-      await _saveRecentSearches();
-    } else if (searchQuery.isNotEmpty) {
-      // Move to top if already exists
-      setState(() {
-        recentSearches.remove(searchQuery);
-        recentSearches.insert(0, searchQuery);
-      });
-      await _saveRecentSearches();
-    }
-
+  // FILTERS
+  Future<void> _loadSubcategories(String categoryId) async {
     try {
-      // Build query parameters
-      final Map<String, dynamic> queryParams = {};
-
-      if (searchQuery.isNotEmpty) {
-        queryParams['search'] = searchQuery;
-      }
-      if (selectedCategoryId != null) {
-        queryParams['categoryId'] = selectedCategoryId;
-      }
-      if (selectedSubcategoryId != null) {
-        queryParams['subcategoryId'] = selectedSubcategoryId;
-      }
-      if (selectedCityId != null) {
-        queryParams['cityId'] = selectedCityId;
-      }
-      if (minPrice > 0) {
-        queryParams['minPrice'] = minPrice.toString();
-      }
-      if (maxPrice < 100000) {
-        queryParams['maxPrice'] = maxPrice.toString();
-      }
-
-      final results = await ApiService.service.searchServices(queryParams);
-
+      final subcategoriesData = await ApiService.subcategory.getSubcategoriesByCategory(categoryId);
       setState(() {
-        searchResults = results;
-        isLoading = false;
+        subcategories = subcategoriesData;
+        selectedSubcategoryId = null;
       });
     } catch (e) {
-      print('Ошибка поиска: $e');
-      setState(() {
-        searchResults = [];
-        isLoading = false;
-      });
+      print('Ошибка загрузки подкатегорий: $e');
     }
+  }
+
+  void _resetFilters() {
+    setState(() {
+      selectedCategoryId = null;
+      selectedSubcategoryId = null;
+      selectedCityId = null;
+      minPrice = 0;
+      maxPrice = 100000;
+      selectedRating = null;
+      subcategories.clear();
+    });
+  }
+
+  void _resetToInitialState() {
+    _searchController.clear();
+    setState(() {
+      hasSearched = false;
+      currentPage = 1;
+      searchResults.clear();
+    });
+    _resetFilters();
+    _focusNode.requestFocus();
+  }
+
+  bool _hasActiveFilters() {
+    return selectedCategoryId != null ||
+        selectedSubcategoryId != null ||
+        selectedCityId != null ||
+        minPrice > 0 ||
+        maxPrice < 100000;
+  }
+
+  void _toggleFavorite(String serviceId) {
+    setState(() {
+      if (favoriteServices.contains(serviceId)) {
+        favoriteServices.remove(serviceId);
+      } else {
+        favoriteServices.add(serviceId);
+      }
+    });
+    print('${favoriteServices.contains(serviceId) ? 'Added to' : 'Removed from'} favorites: $serviceId');
   }
 
   void _showFilters() {
@@ -173,321 +327,37 @@ class _SearchSpecialistsScreenState extends State<SearchSpecialistsScreen> {
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
-      builder: (context) => _buildFilterBottomSheet(),
-    );
-  }
-
-  Widget _buildFilterBottomSheet() {
-    return StatefulBuilder(
-      builder: (context, setModalState) {
-        return Container(
-          height: MediaQuery.of(context).size.height * 0.8,
-          decoration: const BoxDecoration(
-            color: Colors.white,
-            borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-          ),
-          child: Column(
-            children: [
-              // Header
-              Container(
-                padding: const EdgeInsets.all(16),
-                decoration: BoxDecoration(
-                  border: Border(bottom: BorderSide(color: Colors.grey[200]!)),
-                ),
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    const Text(
-                      'Фильтр',
-                      style: TextStyle(
-                        fontSize: 20,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                    IconButton(
-                      icon: const Icon(Icons.close),
-                      onPressed: () => Navigator.pop(context),
-                    ),
-                  ],
-                ),
-              ),
-
-              // Filter content
-              Expanded(
-                child: SingleChildScrollView(
-                  padding: const EdgeInsets.all(16),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      // Services section
-                      const Text(
-                        'Услуги',
-                        style: TextStyle(
-                          fontSize: 18,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-                      const SizedBox(height: 12),
-
-                      // Category dropdown
-                      DropdownButtonFormField<String>(
-                        value: selectedCategoryId,
-                        decoration: const InputDecoration(
-                          labelText: 'Категория',
-                          border: OutlineInputBorder(),
-                        ),
-                        items: [
-                          const DropdownMenuItem<String>(
-                            value: null,
-                            child: Text('Все категории'),
-                          ),
-                          ...categories.map((category) => DropdownMenuItem<String>(
-                            value: category['id'],
-                            child: Text(category['name'] ?? ''),
-                          )),
-                        ],
-                        onChanged: (value) {
-                          setModalState(() {
-                            selectedCategoryId = value;
-                            selectedSubcategoryId = null;
-                            subcategories.clear();
-                          });
-                          setState(() {
-                            selectedCategoryId = value;
-                            selectedSubcategoryId = null;
-                            subcategories.clear();
-                          });
-                          if (value != null) {
-                            _loadSubcategories(value);
-                          }
-                        },
-                      ),
-
-                      const SizedBox(height: 12),
-
-                      // Subcategory dropdown
-                      if (subcategories.isNotEmpty)
-                        DropdownButtonFormField<String>(
-                          value: selectedSubcategoryId,
-                          decoration: const InputDecoration(
-                            labelText: 'Подкатегория',
-                            border: OutlineInputBorder(),
-                          ),
-                          items: [
-                            const DropdownMenuItem<String>(
-                              value: null,
-                              child: Text('Все подкатегории'),
-                            ),
-                            ...subcategories.map((subcategory) => DropdownMenuItem<String>(
-                              value: subcategory['id'],
-                              child: Text(subcategory['name'] ?? ''),
-                            )),
-                          ],
-                          onChanged: (value) {
-                            setModalState(() {
-                              selectedSubcategoryId = value;
-                            });
-                            setState(() {
-                              selectedSubcategoryId = value;
-                            });
-                          },
-                        ),
-
-                      const SizedBox(height: 24),
-
-                      // Location section
-                      const Text(
-                        'Местоположение',
-                        style: TextStyle(
-                          fontSize: 18,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-                      const SizedBox(height: 12),
-
-                      // City dropdown
-                      DropdownButtonFormField<String>(
-                        value: selectedCityId,
-                        decoration: const InputDecoration(
-                          labelText: 'Город',
-                          border: OutlineInputBorder(),
-                        ),
-                        items: [
-                          const DropdownMenuItem<String>(
-                            value: null,
-                            child: Text('Все города'),
-                          ),
-                          ...cities.map((city) => DropdownMenuItem<String>(
-                            value: city['id'],
-                            child: Text('${city['name']} (${city['region']})'),
-                          )),
-                        ],
-                        onChanged: (value) {
-                          setModalState(() {
-                            selectedCityId = value;
-                          });
-                          setState(() {
-                            selectedCityId = value;
-                          });
-                        },
-                      ),
-
-                      const SizedBox(height: 24),
-
-                      // Price section
-                      const Text(
-                        'Цена',
-                        style: TextStyle(
-                          fontSize: 18,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-                      const SizedBox(height: 12),
-
-                      Row(
-                        children: [
-                          Expanded(
-                            child: TextFormField(
-                              initialValue: minPrice.toString(),
-                              decoration: const InputDecoration(
-                                labelText: 'От',
-                                border: OutlineInputBorder(),
-                                suffixText: '₸',
-                              ),
-                              keyboardType: TextInputType.number,
-                              onChanged: (value) {
-                                final price = double.tryParse(value) ?? 0;
-                                setModalState(() {
-                                  minPrice = price;
-                                });
-                                setState(() {
-                                  minPrice = price;
-                                });
-                              },
-                            ),
-                          ),
-                          const SizedBox(width: 16),
-                          Expanded(
-                            child: TextFormField(
-                              initialValue: maxPrice.toString(),
-                              decoration: const InputDecoration(
-                                labelText: 'До',
-                                border: OutlineInputBorder(),
-                                suffixText: '₸',
-                              ),
-                              keyboardType: TextInputType.number,
-                              onChanged: (value) {
-                                final price = double.tryParse(value) ?? 100000;
-                                setModalState(() {
-                                  maxPrice = price;
-                                });
-                                setState(() {
-                                  maxPrice = price;
-                                });
-                              },
-                            ),
-                          ),
-                        ],
-                      ),
-
-                      const SizedBox(height: 24),
-
-                      // Rating section
-                      const Text(
-                        'Рейтинг',
-                        style: TextStyle(
-                          fontSize: 18,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-                      const SizedBox(height: 12),
-
-                      Wrap(
-                        spacing: 8,
-                        children: [
-                          _buildRatingChip('Все', null, setModalState),
-                          _buildRatingChip('5★', 5, setModalState),
-                          _buildRatingChip('4★', 4, setModalState),
-                          _buildRatingChip('3★', 3, setModalState),
-                        ],
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-
-              // Bottom buttons
-              Container(
-                padding: const EdgeInsets.all(16),
-                decoration: BoxDecoration(
-                  border: Border(top: BorderSide(color: Colors.grey[200]!)),
-                ),
-                child: Row(
-                  children: [
-                    Expanded(
-                      child: OutlinedButton(
-                        onPressed: () {
-                          // Reset filters
-                          setModalState(() {
-                            selectedCategoryId = null;
-                            selectedSubcategoryId = null;
-                            selectedCityId = null;
-                            minPrice = 0;
-                            maxPrice = 100000;
-                            selectedRating = null;
-                          });
-                          setState(() {
-                            selectedCategoryId = null;
-                            selectedSubcategoryId = null;
-                            selectedCityId = null;
-                            minPrice = 0;
-                            maxPrice = 100000;
-                            selectedRating = null;
-                            subcategories.clear();
-                          });
-                        },
-                        child: const Text('Сбросить'),
-                      ),
-                    ),
-                    const SizedBox(width: 16),
-                    Expanded(
-                      child: ElevatedButton(
-                        onPressed: () {
-                          Navigator.pop(context);
-                          _performSearch();
-                        },
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: const Color(0xFF2E7D5F),
-                          foregroundColor: Colors.white,
-                        ),
-                        child: const Text('Применить'),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ],
-          ),
-        );
-      },
-    );
-  }
-
-  Widget _buildRatingChip(String label, int? rating, StateSetter setModalState) {
-    final isSelected = selectedRating == rating;
-    return FilterChip(
-      label: Text(label),
-      selected: isSelected,
-      onSelected: (selected) {
-        setModalState(() {
-          selectedRating = selected ? rating : null;
-        });
-        setState(() {
-          selectedRating = selected ? rating : null;
-        });
-      },
-      selectedColor: const Color(0xFF2E7D5F).withOpacity(0.2),
-      checkmarkColor: const Color(0xFF2E7D5F),
+      builder: (context) => FilterBottomSheet(
+        categories: categories,
+        subcategories: subcategories,
+        cities: cities,
+        selectedCategoryId: selectedCategoryId,
+        selectedSubcategoryId: selectedSubcategoryId,
+        selectedCityId: selectedCityId,
+        minPrice: minPrice,
+        maxPrice: maxPrice,
+        selectedRating: selectedRating,
+        onCategoryChanged: (value) {
+          setState(() {
+            selectedCategoryId = value;
+            selectedSubcategoryId = null;
+            subcategories.clear();
+          });
+          if (value != null) _loadSubcategories(value);
+        },
+        onSubcategoryChanged: (value) => setState(() => selectedSubcategoryId = value),
+        onCityChanged: (value) => setState(() => selectedCityId = value),
+        onPriceChanged: (min, max) => setState(() {
+          minPrice = min;
+          maxPrice = max;
+        }),
+        onRatingChanged: (value) => setState(() => selectedRating = value),
+        onReset: _resetFilters,
+        onApply: () {
+          Navigator.pop(context);
+          _performSearch(resetPage: true);
+        },
+      ),
     );
   }
 
@@ -497,404 +367,40 @@ class _SearchSpecialistsScreenState extends State<SearchSpecialistsScreen> {
       body: SafeArea(
         child: Column(
           children: [
-            // Search Header
-            Container(
-              padding: const EdgeInsets.all(16),
-              child: Row(
-                children: [
-                  IconButton(
-                    icon: const Icon(Icons.arrow_back),
-                    onPressed: () => Navigator.pop(context),
-                  ),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: Container(
-                      decoration: BoxDecoration(
-                        color: Colors.grey[100],
-                        borderRadius: BorderRadius.circular(12),
-                        border: Border.all(color: Colors.grey[300]!),
-                      ),
-                      child: TextField(
-                        controller: _searchController,
-                        focusNode: _focusNode,
-                        decoration: const InputDecoration(
-                          hintText: 'Поиск специалистов...',
-                          prefixIcon: Icon(Icons.search, color: Colors.grey),
-                          border: InputBorder.none,
-                          contentPadding: EdgeInsets.symmetric(
-                            horizontal: 16,
-                            vertical: 12,
-                          ),
-                        ),
-                        onChanged: (value) {
-                          // Real-time search can be implemented here
-                        },
-                        onSubmitted: (value) {
-                          if (value.isNotEmpty || _hasActiveFilters()) {
-                            _performSearch(value);
-                          }
-                        },
-                      ),
-                    ),
-                  ),
-                  const SizedBox(width: 8),
-                  IconButton(
-                    icon: Icon(
-                      Icons.tune,
-                      color: _hasActiveFilters() ? const Color(0xFF2E7D5F) : Colors.grey,
-                    ),
-                    onPressed: _showFilters,
-                  ),
-                ],
-              ),
+            SearchHeader(
+              controller: _searchController,
+              focusNode: _focusNode,
+              hasActiveFilters: _hasActiveFilters(),
+              onSearch: (value) => _performSearch(query: value, resetPage: true),
+              onFilterTap: _showFilters,
+              onBack: () => Navigator.pop(context),
             ),
-
-            // Content based on search state
             Expanded(
               child: !hasSearched
-                  ? _buildRecentSearches()
+                  ? RecentSearches(
+                searches: recentSearches,
+                onSearchTap: (search) {
+                  _searchController.text = search;
+                  _performSearch(query: search, resetPage: true);
+                },
+                onRemoveSearch: _removeRecentSearch,
+                onClearAll: _clearAllRecentSearches,
+              )
                   : isLoading
-                  ? _buildLoadingState()
+                  ? const Center(child: CircularProgressIndicator(color: Color(0xFF2E7D5F)))
                   : searchResults.isEmpty
-                  ? _buildNoResults()
-                  : _buildSearchResults(),
+                  ? NoResults(onRetry: _resetToInitialState)
+                  : SearchResults(
+                results: searchResults,
+                totalResults: totalResults,
+                isLoadingMore: isLoadingMore,
+                favoriteServices: favoriteServices,
+                onFavoriteTap: _toggleFavorite,
+                onLoadMore: _loadMoreServices,
+              ),
             ),
           ],
         ),
-      ),
-    );
-  }
-
-  bool _hasActiveFilters() {
-    return selectedCategoryId != null ||
-        selectedSubcategoryId != null ||
-        selectedCityId != null ||
-        minPrice > 0 ||
-        maxPrice < 100000 ||
-        selectedRating != null;
-  }
-
-  Widget _buildLoadingState() {
-    return const Center(
-      child: CircularProgressIndicator(
-        color: Color(0xFF2E7D5F),
-      ),
-    );
-  }
-
-  Widget _buildSearchResults() {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-          child: Text(
-            'Результаты поиска (${searchResults.length})',
-            style: const TextStyle(
-              fontSize: 16,
-              fontWeight: FontWeight.bold,
-              color: Colors.grey,
-            ),
-          ),
-        ),
-        Expanded(
-          child: ListView.builder(
-            padding: const EdgeInsets.symmetric(horizontal: 16),
-            itemCount: searchResults.length,
-            itemBuilder: (context, index) {
-              final service = searchResults[index];
-              return _buildServiceCard(service);
-            },
-          ),
-        ),
-      ],
-    );
-  }
-
-  Widget _buildServiceCard(Map<String, dynamic> service) {
-    final title = service['title'] ?? 'Без названия';
-    final description = service['description'] ?? '';
-    final price = service['price']?.toString() ?? '0';
-    final images = service['images'] as List<dynamic>? ?? [];
-    final userName = service['user']?['fullName'] ?? service['user']?['nickname'] ?? 'Аноним';
-    final cityName = service['city']?['translations']?[0]?['name'] ?? '';
-
-    return Card(
-      margin: const EdgeInsets.only(bottom: 12),
-      elevation: 2,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            // Service image
-            Container(
-              width: 80,
-              height: 80,
-              decoration: BoxDecoration(
-                color: Colors.grey[200],
-                borderRadius: BorderRadius.circular(8),
-                image: images.isNotEmpty
-                    ? DecorationImage(
-                  image: NetworkImage(images[0]),
-                  fit: BoxFit.cover,
-                )
-                    : null,
-              ),
-              child: images.isEmpty
-                  ? const Icon(Icons.image, color: Colors.grey)
-                  : null,
-            ),
-            const SizedBox(width: 12),
-
-            // Service details
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    title,
-                    style: const TextStyle(
-                      fontSize: 16,
-                      fontWeight: FontWeight.bold,
-                    ),
-                    maxLines: 2,
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                  const SizedBox(height: 4),
-                  Text(
-                    userName,
-                    style: TextStyle(
-                      color: Colors.grey[600],
-                      fontSize: 14,
-                    ),
-                  ),
-                  if (cityName.isNotEmpty) ...[
-                    const SizedBox(height: 2),
-                    Text(
-                      cityName,
-                      style: TextStyle(
-                        color: Colors.grey[500],
-                        fontSize: 12,
-                      ),
-                    ),
-                  ],
-                  const SizedBox(height: 8),
-                  Text(
-                    '${price}₸',
-                    style: const TextStyle(
-                      fontSize: 18,
-                      fontWeight: FontWeight.bold,
-                      color: Color(0xFF2E7D5F),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-
-            // Bookmark icon
-            IconButton(
-              icon: const Icon(Icons.bookmark_border, color: Colors.grey),
-              onPressed: () {
-                // Implement bookmark functionality
-              },
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildRecentSearches() {
-    if (recentSearches.isEmpty) {
-      return Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(
-              Icons.history,
-              size: 64,
-              color: Colors.grey[400],
-            ),
-            const SizedBox(height: 16),
-            Text(
-              'История поиска пуста',
-              style: TextStyle(
-                fontSize: 18,
-                color: Colors.grey[600],
-                fontWeight: FontWeight.w500,
-              ),
-            ),
-            const SizedBox(height: 8),
-            Text(
-              'Ваши недавние поиски будут отображаться здесь',
-              style: TextStyle(
-                color: Colors.grey[500],
-              ),
-              textAlign: TextAlign.center,
-            ),
-          ],
-        ),
-      );
-    }
-
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-          child: Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              const Text(
-                'Недавние',
-                style: TextStyle(
-                  fontSize: 18,
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
-              TextButton(
-                onPressed: () {
-                  showDialog(
-                    context: context,
-                    builder: (context) => AlertDialog(
-                      title: const Text('Очистить историю'),
-                      content: const Text('Удалить всю историю поиска?'),
-                      actions: [
-                        TextButton(
-                          onPressed: () => Navigator.pop(context),
-                          child: const Text('Отмена'),
-                        ),
-                        TextButton(
-                          onPressed: () {
-                            Navigator.pop(context);
-                            _clearAllRecentSearches();
-                          },
-                          child: const Text(
-                            'Очистить',
-                            style: TextStyle(color: Colors.red),
-                          ),
-                        ),
-                      ],
-                    ),
-                  );
-                },
-                child: const Text('Очистить все'),
-              ),
-            ],
-          ),
-        ),
-
-        Expanded(
-          child: ListView.builder(
-            itemCount: recentSearches.length,
-            itemBuilder: (context, index) {
-              return ListTile(
-                leading: const Icon(Icons.history, color: Colors.grey),
-                title: Text(recentSearches[index]),
-                trailing: IconButton(
-                  icon: const Icon(Icons.close, color: Colors.grey),
-                  onPressed: () => _removeRecentSearch(index),
-                ),
-                onTap: () {
-                  _searchController.text = recentSearches[index];
-                  _performSearch(recentSearches[index]);
-                },
-              );
-            },
-          ),
-        ),
-      ],
-    );
-  }
-
-  Widget _buildNoResults() {
-    return Center(
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          Container(
-            width: 200,
-            height: 200,
-            decoration: BoxDecoration(
-              color: Colors.grey[100],
-              borderRadius: BorderRadius.circular(16),
-            ),
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Container(
-                  width: 80,
-                  height: 80,
-                  decoration: const BoxDecoration(
-                    color: Color(0xFF2E7D5F),
-                    shape: BoxShape.circle,
-                  ),
-                  child: const Icon(
-                    Icons.sentiment_dissatisfied,
-                    size: 40,
-                    color: Colors.white,
-                  ),
-                ),
-                const SizedBox(height: 16),
-                const Icon(
-                  Icons.search_off,
-                  size: 30,
-                  color: Colors.grey,
-                ),
-              ],
-            ),
-          ),
-
-          const SizedBox(height: 24),
-
-          const Text(
-            'Ничего не найдено',
-            style: TextStyle(
-              fontSize: 20,
-              fontWeight: FontWeight.bold,
-            ),
-          ),
-
-          const SizedBox(height: 8),
-
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 40),
-            child: Text(
-              'К сожалению, по вашему запросу ничего не найдено. Попробуйте изменить ключевое слово или настройки фильтра.',
-              textAlign: TextAlign.center,
-              style: TextStyle(
-                color: Colors.grey[600],
-                height: 1.5,
-              ),
-            ),
-          ),
-
-          const SizedBox(height: 24),
-
-          ElevatedButton(
-            onPressed: () {
-              _searchController.clear();
-              setState(() {
-                hasSearched = false;
-                selectedCategoryId = null;
-                selectedSubcategoryId = null;
-                selectedCityId = null;
-                minPrice = 0;
-                maxPrice = 100000;
-                selectedRating = null;
-                subcategories.clear();
-              });
-              _focusNode.requestFocus();
-            },
-            style: ElevatedButton.styleFrom(
-              backgroundColor: const Color(0xFF2E7D5F),
-              foregroundColor: Colors.white,
-            ),
-            child: const Text('Попробовать другой запрос'),
-          ),
-        ],
       ),
     );
   }

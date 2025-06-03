@@ -82,7 +82,11 @@ class _FavoritesScreenState extends State<FavoritesScreen> {
       itemBuilder: (context, index) {
         return Padding(
           padding: const EdgeInsets.only(bottom: 16),
-          child: ServiceCard(service: services[index]),
+          child: ServiceCard(
+            service: services[index],
+            isFavorite: true,
+            onFavoriteTap: () => _removeFromFavorites(services[index].id),
+          ),
         );
       },
     );

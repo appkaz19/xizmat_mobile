@@ -3,18 +3,25 @@ import 'dart:convert';
 import '../core.dart';
 
 class ServiceApi {
-  Future<List<Map<String, dynamic>>> searchServices(Map<String, dynamic> query) async {
+  Future<Map<String, dynamic>> searchServices(Map<String, dynamic> query) async {
     final res = await CoreApi.sendRequest(
-        path: '/services',
-        method: 'GET',
-        query: query
+      path: '/services',
+      method: 'GET',
+      query: query,
     );
+
     if (res.statusCode == 200) {
       final responseString = await res.transform(utf8.decoder).join();
-      final data = jsonDecode(responseString) as List;
-      return data.cast<Map<String, dynamic>>();
+      final data = jsonDecode(responseString);
+
+      if (data is Map<String, dynamic>) {
+        return data;
+      } else {
+        throw Exception('Invalid API response format: not a Map');
+      }
     }
-    return [];
+
+    throw Exception('Failed to fetch services');
   }
 
   Future<Map<String, dynamic>?> getServiceById(String id) async {

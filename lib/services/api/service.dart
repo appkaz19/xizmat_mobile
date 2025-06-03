@@ -1,3 +1,5 @@
+import 'package:xizmat/services/api/apis/favorites.dart';
+
 import 'apis/auth.dart';
 import 'apis/category.dart';
 import 'apis/chat.dart';
@@ -20,4 +22,5 @@ class ApiService {
   static final category = CategoryApi();
   static final subcategory = SubcategoryApi();
   static final location = LocationApi();
+  static final favorites = FavoritesApi();
 }
