@@ -1,5 +1,3 @@
-import 'package:xizmat/services/api/apis/favorites.dart';
-
 import 'apis/auth.dart';
 import 'apis/category.dart';
 import 'apis/chat.dart';
@@ -10,6 +8,8 @@ import 'apis/service.dart';
 import 'apis/subcategory.dart';
 import 'apis/user.dart';
 import 'apis/wallet.dart';
+import 'apis/favorites.dart';
+import 'apis/reviews.dart';
 
 class ApiService {
   static final auth = AuthApi();
@@ -23,4 +23,5 @@ class ApiService {
   static final subcategory = SubcategoryApi();
   static final location = LocationApi();
   static final favorites = FavoritesApi();
+  static final reviews = ReviewsApi();
 }

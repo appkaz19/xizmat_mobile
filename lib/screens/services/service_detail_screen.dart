@@ -1,14 +1,18 @@
 import 'package:flutter/material.dart';
-import 'package:flutter_rating_bar/flutter_rating_bar.dart';
-import '../../providers/services_provider.dart';
-import '../chat/conversation_screen.dart';
+import 'package:url_launcher/url_launcher.dart';
+import '../../services/api/service.dart';
+import '../../utils/app_theme.dart';
+import '../../widgets/full_gallery_modal.dart';
+import '../../widgets/media_grid_preview.dart';
+import '../../widgets/reviews_section.dart';
+import '../../widgets/service_media_carouseel.dart';
 
 class ServiceDetailScreen extends StatefulWidget {
-  final Service service;
+  final String serviceId;
 
   const ServiceDetailScreen({
     super.key,
-    required this.service,
+    required this.serviceId,
   });
 
   @override
@@ -16,86 +20,318 @@ class ServiceDetailScreen extends StatefulWidget {
 }
 
 class _ServiceDetailScreenState extends State<ServiceDetailScreen> {
+  Map<String, dynamic>? serviceData;
+  List<Map<String, dynamic>> reviews = [];
+  bool isLoading = true;
+  bool isFavorite = false;
+  bool showFullDescription = false;
+  bool isContactUnlocked = false;
+  Map<String, dynamic>? contactInfo;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadServiceData();
+    _loadReviews();
+    _checkFavoriteStatus();
+    _checkContactStatus();
+  }
+
+  Future<void> _loadServiceData() async {
+    setState(() => isLoading = true);
+
+    try {
+      final data = await ApiService.service.getServiceById(widget.serviceId);
+      setState(() {
+        serviceData = data;
+        isLoading = false;
+        isContactUnlocked = data?['contactUnlocked'] == true;
+        if (isContactUnlocked) {
+          contactInfo = data?['contact'];
+        }
+      });
+    } catch (e) {
+      print('Ошибка загрузки сервиса: $e');
+      setState(() => isLoading = false);
+    }
+  }
+
+  Future<void> _loadReviews() async {
+    try {
+      final reviewsData = await ApiService.reviews.getReviews(widget.serviceId);
+      setState(() {
+        reviews = reviewsData;
+      });
+    } catch (e) {
+      print('Ошибка загрузки отзывов: $e');
+    }
+  }
+
+  Future<void> _checkFavoriteStatus() async {
+    try {
+      final favoriteServices = await ApiService.favorites.getFavoriteServices();
+      setState(() {
+        isFavorite = favoriteServices.any((service) => service['id'] == widget.serviceId);
+      });
+    } catch (e) {
+      print('Ошибка проверки избранного: $e');
+    }
+  }
+
+  Future<void> _checkContactStatus() async {
+    try {
+      final purchasedContacts = await ApiService.purchased.getMyPurchasedContacts();
+      final hasPurchased = purchasedContacts.any((contact) =>
+      contact['serviceId'] == widget.serviceId
+      );
+
+      if (hasPurchased) {
+        setState(() {
+          isContactUnlocked = true;
+          final purchasedContact = purchasedContacts.firstWhere(
+                  (contact) => contact['serviceId'] == widget.serviceId
+          );
+          contactInfo = purchasedContact['service']?['user'];
+        });
+      }
+    } catch (e) {
+      print('Ошибка проверки купленных контактов: $e');
+    }
+  }
+
+  Future<void> _toggleFavorite() async {
+    try {
+      bool success;
+      if (isFavorite) {
+        success = await ApiService.favorites.removeFavoriteService(widget.serviceId);
+      } else {
+        success = await ApiService.favorites.addFavoriteService(widget.serviceId);
+      }
+
+      if (success) {
+        setState(() {
+          isFavorite = !isFavorite;
+        });
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(isFavorite ? 'Добавлено в избранное' : 'Удалено из избранного'),
+            backgroundColor: AppColors.primary,
+          ),
+        );
+      }
+    } catch (e) {
+      print('Ошибка изменения избранного: $e');
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Ошибка при изменении избранного'),
+          backgroundColor: Colors.red,
+        ),
+      );
+    }
+  }
+
+  Future<void> _buyContact() async {
+    try {
+      showDialog(
+        context: context,
+        barrierDismissible: false,
+        builder: (context) => const Center(
+          child: CircularProgressIndicator(color: AppColors.primary),
+        ),
+      );
+
+      final result = await ApiService.purchased.buyServiceContact(widget.serviceId);
+
+      Navigator.of(context).pop();
+
+      if (result != null) {
+        setState(() {
+          isContactUnlocked = true;
+          contactInfo = result['user'];
+        });
+
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Контакт успешно разблокирован!'),
+            backgroundColor: AppColors.primary,
+          ),
+        );
+      } else {
+        throw Exception('Не удалось разблокировать контакт');
+      }
+    } catch (e) {
+      Navigator.of(context).pop();
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Ошибка: ${e.toString()}'),
+          backgroundColor: Colors.red,
+        ),
+      );
+    }
+  }
+
+  Future<void> _makePhoneCall(String phoneNumber) async {
+    final Uri launchUri = Uri(
+      scheme: 'tel',
+      path: phoneNumber,
+    );
+
+    if (await canLaunchUrl(launchUri)) {
+      await launchUrl(launchUri);
+    } else {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Не удалось совершить звонок'),
+          backgroundColor: Colors.red,
+        ),
+      );
+    }
+  }
+
+  String _formatPrice(String price) {
+    final number = int.tryParse(price) ?? 0;
+    return number.toString().replaceAllMapped(
+      RegExp(r'(\d{1,3})(?=(\d{3})+(?!\d))'),
+          (Match m) => '${m[1]} ',
+    );
+  }
+
+  String _getCategoryName() {
+    if (serviceData?['category']?['CategoryTranslation'] == null) return '';
+    final translations = serviceData!['category']['CategoryTranslation'] as List;
+    final ruTranslation = translations.firstWhere(
+          (t) => t['language'] == 'ru',
+      orElse: () => translations.isNotEmpty ? translations.first : null,
+    );
+    return ruTranslation?['name'] ?? '';
+  }
+
+  double _getAverageRating() {
+    if (reviews.isEmpty) return 0.0;
+    final sum = reviews.fold<double>(0.0, (sum, review) => sum + (review['rating'] ?? 0));
+    return sum / reviews.length;
+  }
+
+  List<dynamic> _getAllMedia() {
+    final images = serviceData?['images'] as List<dynamic>? ?? [];
+    final videos = serviceData?['videos'] as List<dynamic>? ?? [];
+
+    final List<dynamic> allMedia = [];
+
+    for (final image in images) {
+      allMedia.add({'type': 'image', 'url': image});
+    }
+
+    for (final video in videos) {
+      allMedia.add({'type': 'video', 'url': video});
+    }
+
+    return allMedia;
+  }
+
+  String _getReviewEnding(int count) {
+    if (count == 1) return '';
+    if (count > 1 && count < 5) return 'а';
+    return 'ов';
+  }
+
   @override
   Widget build(BuildContext context) {
+    if (isLoading) {
+      return Scaffold(
+        appBar: AppBar(),
+        body: const Center(
+          child: CircularProgressIndicator(color: AppColors.primary),
+        ),
+      );
+    }
+
+    if (serviceData == null) {
+      return Scaffold(
+        appBar: AppBar(),
+        body: const Center(
+          child: Text('Сервис не найден'),
+        ),
+      );
+    }
+
+    final allMedia = _getAllMedia();
+    final user = serviceData!['user'] as Map<String, dynamic>? ?? {};
+    final providerName = user['fullName'] ?? 'Неизвестно';
+    final title = serviceData!['title'] ?? 'Без названия';
+    final description = serviceData!['description'] ?? '';
+    final price = serviceData!['price']?.toString() ?? '0';
+    final address = serviceData!['address'] ?? 'Адрес не указан';
+
     return Scaffold(
       body: CustomScrollView(
         slivers: [
-          // App Bar with Image
+          // App Bar with Media Carousel
           SliverAppBar(
             expandedHeight: 300,
             pinned: true,
             flexibleSpace: FlexibleSpaceBar(
-              background: Container(
-                decoration: BoxDecoration(
-                  gradient: LinearGradient(
-                    colors: [
-                      Colors.purple.withOpacity(0.8),
-                      Colors.blue.withOpacity(0.8),
-                    ],
-                  ),
-                ),
-                child: const Center(
-                  child: Icon(
-                    Icons.build,
-                    size: 80,
-                    color: Colors.white,
-                  ),
-                ),
-              ),
+              background: allMedia.isNotEmpty
+                  ? ServiceMediaCarousel(media: allMedia)
+                  : _buildDefaultImage(),
             ),
             actions: [
               IconButton(
-                icon: const Icon(Icons.favorite_border),
-                onPressed: () {
-                  // Toggle favorite
-                },
+                icon: Icon(
+                  isFavorite ? Icons.star : Icons.star_border,
+                  color: isFavorite ? Colors.amber : Colors.white,
+                ),
+                onPressed: _toggleFavorite,
               ),
             ],
           ),
 
-          // Service Details
+          // Service Details Content
           SliverToBoxAdapter(
             child: Padding(
               padding: const EdgeInsets.all(16),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  // Service Title and Provider
+                  // Service Title
                   Text(
-                    widget.service.title,
+                    title,
                     style: const TextStyle(
-                      fontSize: 24,
+                      fontSize: 28,
                       fontWeight: FontWeight.bold,
+                      height: 1.2,
                     ),
                   ),
 
-                  const SizedBox(height: 8),
+                  const SizedBox(height: 12),
 
+                  // Provider Info
                   Row(
                     children: [
-                      CircleAvatar(
-                        radius: 16,
-                        backgroundColor: Colors.grey[300],
-                        child: const Icon(Icons.person, size: 16),
-                      ),
-                      const SizedBox(width: 8),
                       Text(
-                        widget.service.providerName,
+                        providerName,
                         style: const TextStyle(
-                          fontSize: 16,
+                          fontSize: 18,
                           fontWeight: FontWeight.w600,
-                          color: Color(0xFF2E7D5F),
+                          color: AppColors.primary,
                         ),
                       ),
-                      const Spacer(),
-                      const Icon(Icons.location_on, size: 16, color: Colors.grey),
-                      const SizedBox(width: 4),
+                      const SizedBox(width: 12),
+                      const Icon(Icons.star, color: Colors.amber, size: 20),
                       Text(
-                        '9081 Lakewood Gardens Junction',
-                        style: TextStyle(
-                          fontSize: 12,
-                          color: Colors.grey[600],
+                        _getAverageRating().toStringAsFixed(1),
+                        style: const TextStyle(
+                          fontWeight: FontWeight.w600,
+                          fontSize: 16,
+                        ),
+                      ),
+                      const SizedBox(width: 6),
+                      Text(
+                        '(${reviews.length} отзыв${_getReviewEnding(reviews.length)})',
+                        style: const TextStyle(
+                          color: AppColors.textSecondary,
+                          fontSize: 14,
                         ),
                       ),
                     ],
@@ -103,369 +339,304 @@ class _ServiceDetailScreenState extends State<ServiceDetailScreen> {
 
                   const SizedBox(height: 16),
 
-                  // Category Badge
-                  Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                    decoration: BoxDecoration(
-                      color: const Color(0xFF2E7D5F).withOpacity(0.1),
-                      borderRadius: BorderRadius.circular(20),
-                    ),
-                    child: const Text(
-                      'Repairing',
-                      style: TextStyle(
-                        color: Color(0xFF2E7D5F),
-                        fontWeight: FontWeight.w500,
+                  // Category and Address
+                  Row(
+                    children: [
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                        decoration: BoxDecoration(
+                          color: AppColors.primary.withOpacity(0.1),
+                          borderRadius: BorderRadius.circular(20),
+                          border: Border.all(color: AppColors.primary.withOpacity(0.3)),
+                        ),
+                        child: Text(
+                          _getCategoryName(),
+                          style: const TextStyle(
+                            fontSize: 14,
+                            fontWeight: FontWeight.w600,
+                            color: AppColors.primary,
+                          ),
+                        ),
                       ),
-                    ),
+                      const SizedBox(width: 16),
+                      const Icon(Icons.location_on, size: 18, color: AppColors.textSecondary),
+                      const SizedBox(width: 4),
+                      Expanded(
+                        child: Text(
+                          address,
+                          style: const TextStyle(
+                            fontSize: 14,
+                            color: AppColors.textSecondary,
+                          ),
+                        ),
+                      ),
+                    ],
                   ),
 
-                  const SizedBox(height: 16),
+                  const SizedBox(height: 20),
 
                   // Price
                   Text(
-                    '\${widget.service.price.toInt()} (Floor price)',
+                    '${_formatPrice(price)} тенге',
                     style: const TextStyle(
-                      fontSize: 20,
+                      fontSize: 24,
                       fontWeight: FontWeight.bold,
-                      color: Color(0xFF2E7D5F),
+                      color: AppColors.primary,
                     ),
                   ),
 
-                  const SizedBox(height: 24),
+                  const SizedBox(height: 32),
 
                   // About Section
                   const Text(
-                    'About me',
+                    'О сервисе',
                     style: TextStyle(
-                      fontSize: 18,
+                      fontSize: 22,
                       fontWeight: FontWeight.bold,
                     ),
                   ),
 
-                  const SizedBox(height: 8),
+                  const SizedBox(height: 12),
 
-                  const Text(
-                    'Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt ut labore et dolore magna aliqua. Ut enim ad minim nisi ut aliquip.',
-                    style: TextStyle(
-                      color: Colors.grey,
-                      height: 1.5,
-                    ),
-                  ),
+                  _buildDescription(description),
 
-                  TextButton(
-                    onPressed: () {
-                      // Show full description
-                    },
-                    child: const Text('Read more...'),
-                  ),
-
-                  const SizedBox(height: 24),
+                  const SizedBox(height: 32),
 
                   // Photos & Videos Section
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      const Text(
-                        'Photos & Videos',
-                        style: TextStyle(
-                          fontSize: 18,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-                      TextButton(
-                        onPressed: () {
-                          // Show all photos
-                        },
-                        child: const Text('See All'),
-                      ),
-                    ],
-                  ),
-
-                  const SizedBox(height: 12),
-
-                  SizedBox(
-                    height: 100,
-                    child: ListView.builder(
-                      scrollDirection: Axis.horizontal,
-                      itemCount: 4,
-                      itemBuilder: (context, index) {
-                        return Container(
-                          width: 100,
-                          margin: const EdgeInsets.only(right: 12),
-                          decoration: BoxDecoration(
-                            color: Colors.grey[300],
-                            borderRadius: BorderRadius.circular(12),
+                  if (allMedia.isNotEmpty) ...[
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        const Text(
+                          'Фото и видео',
+                          style: TextStyle(
+                            fontSize: 22,
+                            fontWeight: FontWeight.bold,
                           ),
-                          child: const Icon(Icons.image, color: Colors.grey),
-                        );
-                      },
+                        ),
+                        TextButton(
+                          onPressed: () {
+                            _showFullGallery(allMedia);
+                          },
+                          child: const Text(
+                            'Посмотреть все',
+                            style: TextStyle(color: AppColors.primary),
+                          ),
+                        ),
+                      ],
                     ),
-                  ),
 
-                  const SizedBox(height: 24),
+                    const SizedBox(height: 16),
+
+                    MediaGridPreview(media: allMedia, onTap: _showFullGallery),
+
+                    const SizedBox(height: 32),
+                  ],
 
                   // Reviews Section
-                  Row(
-                    children: [
-                      const Icon(Icons.star, color: Colors.amber),
-                      const SizedBox(width: 4),
-                      Text(
-                        widget.service.rating.toString(),
-                        style: const TextStyle(
-                          fontSize: 16,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-                      const SizedBox(width: 8),
-                      Text(
-                        '(${widget.service.reviewCount} reviews)',
-                        style: TextStyle(
-                          color: Colors.grey[600],
-                        ),
-                      ),
-                      const Spacer(),
-                      TextButton(
-                        onPressed: () {
-                          // Show all reviews
-                        },
-                        child: const Text('See All'),
-                      ),
-                    ],
+                  ReviewsSection(
+                    reviews: reviews,
+                    serviceId: widget.serviceId,
+                    onReviewAdded: _loadReviews,
                   ),
 
-                  // Review Filters
-                  const SizedBox(height: 12),
-
-                  Row(
-                    children: [
-                      _buildReviewFilter('All', true),
-                      const SizedBox(width: 8),
-                      _buildReviewFilter('5', false),
-                      const SizedBox(width: 8),
-                      _buildReviewFilter('4', false),
-                      const SizedBox(width: 8),
-                      _buildReviewFilter('3', false),
-                      const SizedBox(width: 8),
-                      _buildReviewFilter('2', false),
-                    ],
-                  ),
-
-                  const SizedBox(height: 16),
-
-                  // Review Items
-                  _buildReviewItem(
-                    'Thad Eddings',
-                    5,
-                    'Awesome! this is what i was looking for. i recommend to everyone ❤️❤️❤️',
-                    '3 weeks ago',
-                    724,
-                  ),
-
-                  _buildReviewItem(
-                    'Marci Senter',
-                    5,
-                    'This is the first time I\'ve used his services, and the results were amazing! 👍👍👍',
-                    '2 weeks ago',
-                    597,
-                  ),
-
-                  _buildReviewItem(
-                    'Aileen Fullbright',
-                    4,
-                    'The workers are very professional and the results are very satisfying! I like it very much! 💯💯💯',
-                    '1 week ago',
-                    783,
-                  ),
-
-                  const SizedBox(height: 100), // Space for bottom buttons
+                  const SizedBox(height: 100),
                 ],
               ),
             ),
           ),
         ],
       ),
-      bottomNavigationBar: Container(
-        padding: const EdgeInsets.all(16),
-        decoration: BoxDecoration(
-          color: Colors.white,
-          boxShadow: [
-            BoxShadow(
-              color: Colors.grey.withOpacity(0.1),
-              spreadRadius: 1,
-              blurRadius: 10,
-              offset: const Offset(0, -2),
+      bottomNavigationBar: _buildBottomBar(),
+    );
+  }
+
+  Widget _buildDescription(String description) {
+    final lines = description.split('\n');
+    final hasLongText = lines.length > 3 || description.length > 150;
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          showFullDescription || !hasLongText
+              ? (description.isNotEmpty ? description : 'Описание не указано')
+              : '${description.substring(0, description.length > 150 ? 150 : description.length)}...',
+          style: const TextStyle(
+            color: AppColors.textPrimary,
+            height: 1.5,
+            fontSize: 16,
+          ),
+        ),
+        if (hasLongText)
+          TextButton(
+            onPressed: () {
+              setState(() {
+                showFullDescription = !showFullDescription;
+              });
+            },
+            style: TextButton.styleFrom(
+              padding: const EdgeInsets.only(top: 8),
             ),
+            child: Text(
+              showFullDescription ? 'Свернуть' : 'Читать далее...',
+              style: const TextStyle(
+                color: AppColors.primary,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ),
+      ],
+    );
+  }
+
+  void _showFullGallery(List<dynamic> media) {
+    showDialog(
+      context: context,
+      builder: (context) => FullGalleryModal(media: media),
+    );
+  }
+
+  Widget _buildDefaultImage() {
+    return Container(
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          colors: [
+            Colors.purple.withOpacity(0.8),
+            Colors.blue.withOpacity(0.8),
           ],
         ),
-        child: Row(
-          children: [
-            Expanded(
-              child: OutlinedButton(
-                onPressed: () {
-                  Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                      builder: (context) => ConversationScreen(
-                        userId: widget.service.providerId,
-                        userName: widget.service.providerName,
-                      ),
-                    ),
-                  );
-                },
-                child: const Text('Message'),
-              ),
-            ),
-
-            const SizedBox(width: 16),
-
-            Expanded(
-              child: ElevatedButton(
-                onPressed: () {
-                  // Book service
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(content: Text('Бронирование услуги')),
-                  );
-                },
-                child: const Text('Book Now'),
-              ),
-            ),
-          ],
+      ),
+      child: const Center(
+        child: Icon(
+          Icons.build,
+          size: 80,
+          color: Colors.white,
         ),
       ),
     );
   }
 
-  Widget _buildReviewFilter(String label, bool isSelected) {
+  Widget _buildBottomBar() {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+      padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: isSelected ? const Color(0xFF2E7D5F) : Colors.transparent,
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(
-          color: isSelected ? const Color(0xFF2E7D5F) : Colors.grey[300]!,
-        ),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          if (label != 'All') ...[
-            const Icon(Icons.star, size: 12, color: Colors.amber),
-            const SizedBox(width: 2),
-          ],
-          Text(
-            label,
-            style: TextStyle(
-              color: isSelected ? Colors.white : Colors.grey[700],
-              fontSize: 12,
-              fontWeight: FontWeight.w500,
-            ),
+        color: Colors.white,
+        boxShadow: [
+          BoxShadow(
+            color: Colors.grey.withOpacity(0.1),
+            spreadRadius: 1,
+            blurRadius: 10,
+            offset: const Offset(0, -2),
           ),
         ],
       ),
+      child: isContactUnlocked ? _buildContactButtons() : _buildBuyContactButton(),
     );
   }
 
-  Widget _buildReviewItem(
-      String name,
-      int rating,
-      String comment,
-      String time,
-      int likes,
-      ) {
-    return Container(
-      margin: const EdgeInsets.only(bottom: 16),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          CircleAvatar(
-            radius: 20,
-            backgroundColor: Colors.grey[300],
-            child: const Icon(Icons.person, size: 20),
+  Widget _buildBuyContactButton() {
+    return ElevatedButton(
+      onPressed: _buyContact,
+      style: ElevatedButton.styleFrom(
+        backgroundColor: Colors.amber,
+        foregroundColor: Colors.black,
+        padding: const EdgeInsets.symmetric(vertical: 16),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(8),
+        ),
+      ),
+      child: const Text(
+        'Посмотреть контакт (100 тенге)',
+        style: TextStyle(
+          fontSize: 16,
+          fontWeight: FontWeight.bold,
+        ),
+      ),
+    );
+  }
+
+  Widget _buildContactButtons() {
+    final phone = contactInfo?['phone'] ?? '';
+    final fullName = contactInfo?['fullName'] ?? 'Исполнитель';
+
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Container(
+          width: double.infinity,
+          padding: const EdgeInsets.all(16),
+          margin: const EdgeInsets.only(bottom: 12),
+          decoration: BoxDecoration(
+            color: AppColors.primary.withOpacity(0.1),
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(color: AppColors.primary.withOpacity(0.3)),
           ),
-
-          const SizedBox(width: 12),
-
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
-                  children: [
-                    Text(
-                      name,
-                      style: const TextStyle(
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                    const Spacer(),
-                    Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                      decoration: BoxDecoration(
-                        color: const Color(0xFF2E7D5F),
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                      child: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          const Icon(Icons.star, size: 12, color: Colors.white),
-                          const SizedBox(width: 4),
-                          Text(
-                            rating.toString(),
-                            style: const TextStyle(
-                              color: Colors.white,
-                              fontSize: 12,
-                              fontWeight: FontWeight.bold,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                    const SizedBox(width: 8),
-                    IconButton(
-                      icon: const Icon(Icons.more_vert, size: 16),
-                      onPressed: () {},
-                    ),
-                  ],
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                fullName,
+                style: const TextStyle(
+                  fontSize: 18,
+                  fontWeight: FontWeight.bold,
+                  color: AppColors.primary,
                 ),
-
+              ),
+              if (phone.isNotEmpty) ...[
                 const SizedBox(height: 4),
-
                 Text(
-                  comment,
+                  phone,
                   style: const TextStyle(
-                    color: Colors.black87,
-                    height: 1.4,
+                    fontSize: 16,
+                    color: AppColors.textPrimary,
                   ),
                 ),
-
-                const SizedBox(height: 8),
-
-                Row(
-                  children: [
-                    Icon(Icons.favorite, size: 16, color: Colors.red[300]),
-                    const SizedBox(width: 4),
-                    Text(
-                      likes.toString(),
-                      style: const TextStyle(
-                        fontSize: 12,
-                        color: Colors.grey,
-                      ),
-                    ),
-                    const SizedBox(width: 16),
-                    Text(
-                      time,
-                      style: const TextStyle(
-                        fontSize: 12,
-                        color: Colors.grey,
-                      ),
-                    ),
-                  ],
-                ),
               ],
-            ),
+            ],
           ),
-        ],
-      ),
+        ),
+
+        Row(
+          children: [
+            Expanded(
+              child: ElevatedButton.icon(
+                onPressed: () {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(content: Text('Переход в чаты будет реализован позже')),
+                  );
+                },
+                icon: const Icon(Icons.message, size: 20),
+                label: const Text('Написать'),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: const Color(0xFF4FC3F7),
+                  foregroundColor: Colors.white,
+                  padding: const EdgeInsets.symmetric(vertical: 12),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                ),
+              ),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: ElevatedButton.icon(
+                onPressed: phone.isNotEmpty ? () => _makePhoneCall(phone) : null,
+                icon: const Icon(Icons.phone, size: 20),
+                label: const Text('Позвонить'),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: AppColors.primary,
+                  foregroundColor: Colors.white,
+                  padding: const EdgeInsets.symmetric(vertical: 12),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                ),
+              ),
+            ),
+          ],
+        ),
+      ],
     );
   }
 }

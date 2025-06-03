@@ -1,14 +1,10 @@
 import 'package:flutter/material.dart';
-import 'package:provider/provider.dart';
 import 'package:flutter_svg/flutter_svg.dart';
-
-import '../../providers/auth_provider.dart';
+import '../../services/api/service.dart';
 import '../../widgets/social_login_button.dart';
 import 'forgot_password_screen.dart';
 import 'register_screen.dart';
-
 import '../main/main_navigation.dart';
-
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -22,6 +18,15 @@ class _LoginScreenState extends State<LoginScreen> {
   final _phoneController = TextEditingController();
   final _passwordController = TextEditingController();
   bool _rememberMe = false;
+  bool _isLoading = false;
+  bool _obscurePassword = true;
+
+  @override
+  void dispose() {
+    _phoneController.dispose();
+    _passwordController.dispose();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -35,19 +40,32 @@ class _LoginScreenState extends State<LoginScreen> {
               const SizedBox(height: 40),
 
               // Illustration
-              SvgPicture.asset(
-                'assets/images/login.svg',
-                fit: BoxFit.contain,
+              Center(
+                child: Container(
+                  width: 200,
+                  height: 200,
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF2E7D5F).withOpacity(0.1),
+                    borderRadius: BorderRadius.circular(100),
+                  ),
+                  child: const Icon(
+                    Icons.login,
+                    size: 80,
+                    color: Color(0xFF2E7D5F),
+                  ),
+                ),
               ),
 
               const SizedBox(height: 32),
 
-              Text(
-                'Войдите в аккаунт',
-                textAlign: TextAlign.center,
-                style: Theme.of(context).textTheme.headlineMedium?.copyWith(
-                  fontWeight: FontWeight.bold,
-                  fontSize: 42,
+              Center(
+                child: Text(
+                  'Войдите в аккаунт',
+                  textAlign: TextAlign.center,
+                  style: Theme.of(context).textTheme.headlineMedium?.copyWith(
+                    fontWeight: FontWeight.bold,
+                    fontSize: 28,
+                  ),
                 ),
               ),
 
@@ -102,20 +120,43 @@ class _LoginScreenState extends State<LoginScreen> {
                       decoration: const InputDecoration(
                         labelText: 'Номер телефона',
                         prefixIcon: Icon(Icons.phone),
+                        border: OutlineInputBorder(),
                       ),
                       keyboardType: TextInputType.phone,
+                      validator: (value) {
+                        if (value == null || value.isEmpty) {
+                          return 'Введите номер телефона';
+                        }
+                        return null;
+                      },
                     ),
 
                     const SizedBox(height: 16),
 
                     TextFormField(
                       controller: _passwordController,
-                      decoration: const InputDecoration(
+                      decoration: InputDecoration(
                         labelText: 'Пароль',
-                        prefixIcon: Icon(Icons.lock),
-                        suffixIcon: Icon(Icons.visibility_off),
+                        prefixIcon: const Icon(Icons.lock),
+                        suffixIcon: IconButton(
+                          icon: Icon(
+                            _obscurePassword ? Icons.visibility_off : Icons.visibility,
+                          ),
+                          onPressed: () {
+                            setState(() {
+                              _obscurePassword = !_obscurePassword;
+                            });
+                          },
+                        ),
+                        border: const OutlineInputBorder(),
                       ),
-                      obscureText: true,
+                      obscureText: _obscurePassword,
+                      validator: (value) {
+                        if (value == null || value.isEmpty) {
+                          return 'Введите пароль';
+                        }
+                        return null;
+                      },
                     ),
 
                     const SizedBox(height: 16),
@@ -129,6 +170,7 @@ class _LoginScreenState extends State<LoginScreen> {
                               _rememberMe = value ?? false;
                             });
                           },
+                          activeColor: const Color(0xFF2E7D5F),
                         ),
                         const Text('Запомнить меня'),
                       ],
@@ -139,8 +181,31 @@ class _LoginScreenState extends State<LoginScreen> {
                     SizedBox(
                       width: double.infinity,
                       child: ElevatedButton(
-                        onPressed: _login,
-                        child: const Text('Войти'),
+                        onPressed: _isLoading ? null : _login,
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: const Color(0xFF2E7D5F),
+                          foregroundColor: Colors.white,
+                          padding: const EdgeInsets.symmetric(vertical: 16),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                        ),
+                        child: _isLoading
+                            ? const SizedBox(
+                          height: 20,
+                          width: 20,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2,
+                            valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                          ),
+                        )
+                            : const Text(
+                          'Войти',
+                          style: TextStyle(
+                            fontSize: 16,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
                       ),
                     ),
 
@@ -155,7 +220,10 @@ class _LoginScreenState extends State<LoginScreen> {
                           ),
                         );
                       },
-                      child: const Text('Забыли пароль?'),
+                      child: const Text(
+                        'Забыли пароль?',
+                        style: TextStyle(color: Color(0xFF2E7D5F)),
+                      ),
                     ),
                   ],
                 ),
@@ -176,7 +244,13 @@ class _LoginScreenState extends State<LoginScreen> {
                         ),
                       );
                     },
-                    child: const Text('Зарегистрируйтесь'),
+                    child: const Text(
+                      'Зарегистрируйтесь',
+                      style: TextStyle(
+                        color: Color(0xFF2E7D5F),
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
                   ),
                 ],
               ),
@@ -188,20 +262,79 @@ class _LoginScreenState extends State<LoginScreen> {
   }
 
   void _socialLogin(String provider) {
-    // Implement social login
-    Navigator.pushReplacement(
-      context,
-      MaterialPageRoute(builder: (context) => const MainNavigation()),
+    // TODO: Implement social login
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text('Вход через $provider в разработке'),
+        backgroundColor: Colors.orange,
+      ),
     );
   }
 
-  void _login() {
-    if (_formKey.currentState!.validate()) {
-      // Implement login logic
-      Navigator.pushReplacement(
-        context,
-        MaterialPageRoute(builder: (context) => const MainNavigation()),
-      );
+  Future<void> _login() async {
+    if (!_formKey.currentState!.validate()) {
+      return;
     }
+
+    setState(() => _isLoading = true);
+
+    try {
+      final phone = _phoneController.text.trim();
+      final password = _passwordController.text.trim();
+
+      print('Попытка входа: телефон = $phone');
+
+      final success = await ApiService.auth.login(phone, password);
+
+      if (success) {
+        print('Успешный вход!');
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Успешный вход!'),
+              backgroundColor: Color(0xFF2E7D5F),
+            ),
+          );
+
+          // Переход на главный экран
+          Navigator.pushReplacement(
+            context,
+            MaterialPageRoute(builder: (context) => const MainNavigation()),
+          );
+        }
+      } else {
+        if (mounted) {
+          _showErrorDialog('Ошибка входа', 'Неверный номер телефона или пароль');
+        }
+      }
+    } catch (e) {
+      print('Ошибка входа: $e');
+      if (mounted) {
+        _showErrorDialog('Ошибка', 'Произошла ошибка при входе. Попробуйте снова.');
+      }
+    } finally {
+      if (mounted) {
+        setState(() => _isLoading = false);
+      }
+    }
+  }
+
+  void _showErrorDialog(String title, String message) {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text(title),
+        content: Text(message),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text(
+              'OK',
+              style: TextStyle(color: Color(0xFF2E7D5F)),
+            ),
+          ),
+        ],
+      ),
+    );
   }
 }

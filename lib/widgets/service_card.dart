@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import '../screens/services/service_detail_screen.dart';
+
 class ServiceCard extends StatelessWidget {
   final Map<String, dynamic> service;
   final bool isFavorite;
@@ -14,6 +16,7 @@ class ServiceCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final serviceId = service['id']?.toString();
     final title = service['title'] ?? 'Без названия';
     final price = service['price']?.toString() ?? '0';
     final imageUrl = service['image'];
@@ -21,28 +24,40 @@ class ServiceCard extends StatelessWidget {
     final rating = service['rating'];
     final reviewsCount = service['reviewsCount'] ?? 0;
 
-    return Card(
-      margin: const EdgeInsets.only(bottom: 12),
-      elevation: 2,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            ServiceImage(imageUrl: imageUrl),
-            const SizedBox(width: 12),
-            Expanded(
-              child: ServiceDetails(
-                author: author,
-                title: title,
-                price: price,
-                rating: rating,
-                reviewsCount: reviewsCount,
-              ),
+    return GestureDetector(
+      onTap: () {
+        if (serviceId != null) {
+          Navigator.push(
+            context,
+            MaterialPageRoute(
+              builder: (context) => ServiceDetailScreen(serviceId: serviceId),
             ),
-            FavoriteButton(isFavorite: isFavorite, onTap: onFavoriteTap),
-          ],
+          );
+        }
+      },
+      child: Card(
+        margin: const EdgeInsets.only(bottom: 12),
+        elevation: 2,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+        child: Padding(
+          padding: const EdgeInsets.all(16),
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              ServiceImage(imageUrl: imageUrl),
+              const SizedBox(width: 12),
+              Expanded(
+                child: ServiceDetails(
+                  author: author,
+                  title: title,
+                  price: price,
+                  rating: rating,
+                  reviewsCount: reviewsCount,
+                ),
+              ),
+              FavoriteButton(isFavorite: isFavorite, onTap: onFavoriteTap),
+            ],
+          ),
         ),
       ),
     );
