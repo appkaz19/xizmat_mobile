@@ -2,10 +2,12 @@ import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../../services/api/service.dart';
 import '../../utils/app_theme.dart';
-import '../../widgets/full_gallery_modal.dart';
+import '../../utils/video_manager.dart';
+import '../../utils/favorites_utils.dart';
+import '../../widgets/service_media_carousel.dart';
 import '../../widgets/media_grid_preview.dart';
 import '../../widgets/reviews_section.dart';
-import '../../widgets/service_media_carouseel.dart';
+import '../../widgets/full_gallery_modal.dart';
 
 class ServiceDetailScreen extends StatefulWidget {
   final String serviceId;
@@ -23,7 +25,6 @@ class _ServiceDetailScreenState extends State<ServiceDetailScreen> {
   Map<String, dynamic>? serviceData;
   List<Map<String, dynamic>> reviews = [];
   bool isLoading = true;
-  bool isFavorite = false;
   bool showFullDescription = false;
   bool isContactUnlocked = false;
   Map<String, dynamic>? contactInfo;
@@ -33,7 +34,6 @@ class _ServiceDetailScreenState extends State<ServiceDetailScreen> {
     super.initState();
     _loadServiceData();
     _loadReviews();
-    _checkFavoriteStatus();
     _checkContactStatus();
   }
 
@@ -67,17 +67,6 @@ class _ServiceDetailScreenState extends State<ServiceDetailScreen> {
     }
   }
 
-  Future<void> _checkFavoriteStatus() async {
-    try {
-      final favoriteServices = await ApiService.favorites.getFavoriteServices();
-      setState(() {
-        isFavorite = favoriteServices.any((service) => service['id'] == widget.serviceId);
-      });
-    } catch (e) {
-      print('Ошибка проверки избранного: $e');
-    }
-  }
-
   Future<void> _checkContactStatus() async {
     try {
       final purchasedContacts = await ApiService.purchased.getMyPurchasedContacts();
@@ -96,37 +85,6 @@ class _ServiceDetailScreenState extends State<ServiceDetailScreen> {
       }
     } catch (e) {
       print('Ошибка проверки купленных контактов: $e');
-    }
-  }
-
-  Future<void> _toggleFavorite() async {
-    try {
-      bool success;
-      if (isFavorite) {
-        success = await ApiService.favorites.removeFavoriteService(widget.serviceId);
-      } else {
-        success = await ApiService.favorites.addFavoriteService(widget.serviceId);
-      }
-
-      if (success) {
-        setState(() {
-          isFavorite = !isFavorite;
-        });
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(isFavorite ? 'Добавлено в избранное' : 'Удалено из избранного'),
-            backgroundColor: AppColors.primary,
-          ),
-        );
-      }
-    } catch (e) {
-      print('Ошибка изменения избранного: $e');
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Ошибка при изменении избранного'),
-          backgroundColor: Colors.red,
-        ),
-      );
     }
   }
 
@@ -237,6 +195,13 @@ class _ServiceDetailScreenState extends State<ServiceDetailScreen> {
   }
 
   @override
+  void dispose() {
+    // Очищаем видео ресурсы при закрытии экрана
+    VideoManager().dispose();
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
     if (isLoading) {
       return Scaffold(
@@ -277,12 +242,10 @@ class _ServiceDetailScreenState extends State<ServiceDetailScreen> {
                   : _buildDefaultImage(),
             ),
             actions: [
-              IconButton(
-                icon: Icon(
-                  isFavorite ? Icons.star : Icons.star_border,
-                  color: isFavorite ? Colors.amber : Colors.white,
-                ),
-                onPressed: _toggleFavorite,
+              FavoritesUtils.buildServiceFavoriteIcon(
+                context,
+                widget.serviceId,
+                inactiveColor: Colors.white,
               ),
             ],
           ),

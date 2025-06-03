@@ -117,8 +117,6 @@ class _FavoritesScreenState extends State<FavoritesScreen> with SingleTickerProv
             padding: const EdgeInsets.only(bottom: 16),
             child: ServiceCard(
               service: item,
-              isFavorite: true, // Все элементы в избранном
-              onFavoriteTap: () => _toggleFavorite(itemId, isServices),
             ),
           );
         },

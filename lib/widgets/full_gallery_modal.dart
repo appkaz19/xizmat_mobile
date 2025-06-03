@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
-import 'package:video_player/video_player.dart';
+import '../../../utils/video_manager.dart';
+import 'video_thumbnail_widget.dart';
 import 'package:chewie/chewie.dart';
 
 class FullGalleryModal extends StatefulWidget {
@@ -43,7 +44,7 @@ class _FullGalleryModalState extends State<FullGalleryModal> {
                   final item = widget.media[index];
                   return Center(
                     child: item['type'] == 'video'
-                        ? VideoPlayerWidget(videoUrl: item['url'])
+                        ? FullScreenVideoPlayer(videoUrl: item['url'])
                         : InteractiveViewer(
                       child: Image.network(
                         item['url'],
@@ -94,13 +95,12 @@ class _FullGalleryModalState extends State<FullGalleryModal> {
                       child: ClipRRect(
                         borderRadius: BorderRadius.circular(6),
                         child: item['type'] == 'video'
-                            ? Container(
-                          color: Colors.grey[800],
-                          child: const Icon(
-                            Icons.play_circle_fill,
-                            color: Colors.white,
-                            size: 24,
-                          ),
+                            ? VideoThumbnailWidget(
+                          videoUrl: item['url'],
+                          width: 64,
+                          height: 64,
+                          showPlayIcon: false,
+                          showVideoIcon: true,
                         )
                             : Image.network(
                           item['url'],
@@ -129,6 +129,67 @@ class _FullGalleryModalState extends State<FullGalleryModal> {
   }
 }
 
+class FullScreenVideoPlayer extends StatefulWidget {
+  final String videoUrl;
+
+  const FullScreenVideoPlayer({super.key, required this.videoUrl});
+
+  @override
+  State<FullScreenVideoPlayer> createState() => _FullScreenVideoPlayerState();
+}
+
+class _FullScreenVideoPlayerState extends State<FullScreenVideoPlayer> {
+  ChewieController? _chewieController;
+  bool _showPlayer = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _initializePlayer();
+  }
+
+  Future<void> _initializePlayer() async {
+    _chewieController = await VideoManager().getChewieController(
+      widget.videoUrl,
+      autoPlay: false,
+      showControls: true,
+    );
+    if (mounted) setState(() {});
+  }
+
+  void _showVideoPlayer() {
+    setState(() {
+      _showPlayer = true;
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (!_showPlayer) {
+      // Показываем превью с кнопкой воспроизведения
+      return VideoThumbnailWidget(
+        videoUrl: widget.videoUrl,
+        fit: BoxFit.contain,
+        onTap: _showVideoPlayer,
+        showPlayIcon: true,
+        showVideoIcon: false,
+      );
+    }
+
+    // Показываем плеер
+    if (_chewieController != null) {
+      return Chewie(controller: _chewieController!);
+    }
+
+    return Container(
+      color: Colors.black,
+      child: const Center(
+        child: CircularProgressIndicator(color: Colors.white),
+      ),
+    );
+  }
+}
+
 class VideoPlayerWidget extends StatefulWidget {
   final String videoUrl;
 
@@ -139,7 +200,6 @@ class VideoPlayerWidget extends StatefulWidget {
 }
 
 class _VideoPlayerWidgetState extends State<VideoPlayerWidget> {
-  VideoPlayerController? _controller;
   ChewieController? _chewieController;
   bool _isInitialized = false;
 
@@ -150,27 +210,10 @@ class _VideoPlayerWidgetState extends State<VideoPlayerWidget> {
   }
 
   Future<void> _initializeVideo() async {
-    try {
-      _controller = VideoPlayerController.networkUrl(Uri.parse(widget.videoUrl));
-      await _controller!.initialize();
-      _chewieController = ChewieController(
-        videoPlayerController: _controller!,
-        autoPlay: false,
-        looping: false,
-      );
-      setState(() {
-        _isInitialized = true;
-      });
-    } catch (e) {
-      print('Ошибка инициализации видео: $e');
-    }
-  }
-
-  @override
-  void dispose() {
-    _controller?.dispose();
-    _chewieController?.dispose();
-    super.dispose();
+    _chewieController = await VideoManager().getChewieController(widget.videoUrl);
+    setState(() {
+      _isInitialized = true;
+    });
   }
 
   @override

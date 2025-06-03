@@ -1,17 +1,14 @@
 import 'package:flutter/material.dart';
 
 import '../screens/services/service_detail_screen.dart';
+import '../utils/favorites_utils.dart';
 
 class ServiceCard extends StatelessWidget {
   final Map<String, dynamic> service;
-  final bool isFavorite;
-  final VoidCallback onFavoriteTap;
 
   const ServiceCard({
     super.key,
     required this.service,
-    required this.isFavorite,
-    required this.onFavoriteTap,
   });
 
   @override
@@ -55,7 +52,14 @@ class ServiceCard extends StatelessWidget {
                   reviewsCount: reviewsCount,
                 ),
               ),
-              FavoriteButton(isFavorite: isFavorite, onTap: onFavoriteTap),
+              if (serviceId != null)
+                FavoritesUtils.buildServiceFavoriteIcon(
+                  context,
+                  serviceId,
+                  size: 24,
+                )
+              else
+                const SizedBox(width: 48), // Заглушка если нет ID
             ],
           ),
         ),
@@ -196,6 +200,7 @@ class RatingWidget extends StatelessWidget {
   }
 }
 
+// Оставляю старый FavoriteButton на случай если где-то еще используется
 class FavoriteButton extends StatelessWidget {
   final bool isFavorite;
   final VoidCallback onTap;

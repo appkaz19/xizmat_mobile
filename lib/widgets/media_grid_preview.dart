@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'video_thumbnail_widget.dart';
 
 class MediaGridPreview extends StatelessWidget {
   final List<dynamic> media;
@@ -35,28 +36,12 @@ class MediaGridPreview extends StatelessWidget {
                   ClipRRect(
                     borderRadius: BorderRadius.circular(12),
                     child: item['type'] == 'video'
-                        ? Stack(
-                      children: [
-                        Container(
-                          width: double.infinity,
-                          height: double.infinity,
-                          color: Colors.black,
-                          child: const Icon(
-                            Icons.play_circle_fill,
-                            color: Colors.white,
-                            size: 40,
-                          ),
-                        ),
-                        const Positioned(
-                          top: 8,
-                          right: 8,
-                          child: Icon(
-                            Icons.videocam,
-                            color: Colors.white,
-                            size: 20,
-                          ),
-                        ),
-                      ],
+                        ? VideoThumbnailWidget(
+                      videoUrl: item['url'],
+                      width: double.infinity,
+                      height: double.infinity,
+                      showPlayIcon: false,
+                      showVideoIcon: true,
                     )
                         : Image.network(
                       item['url'],

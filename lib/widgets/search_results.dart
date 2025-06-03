@@ -59,8 +59,6 @@ class SearchResults extends StatelessWidget {
                 }
                 return ServiceCard(
                   service: results[index],
-                  isFavorite: favoriteServices.contains(results[index]['id'].toString()),
-                  onFavoriteTap: () => onFavoriteTap(results[index]['id'].toString()),
                 );
               },
             ),

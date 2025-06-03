@@ -45,12 +45,11 @@ class _UniversalSearchScreenState extends State<UniversalSearchScreen> {
   int currentPage = 1;
   int totalResults = 0;
 
-  // Filter state
+  // Filter state - ОБНОВЛЕНО
   String? selectedCategoryId;
   String? selectedSubcategoryId;
   String? selectedCityId;
-  double minPrice = 0;
-  double maxPrice = 100000;
+  int maxPrice = 1000000; // Изменили на int и убрали minPrice
   int? selectedRating;
 
   static const int _pageSize = 20;
@@ -58,7 +57,7 @@ class _UniversalSearchScreenState extends State<UniversalSearchScreen> {
   @override
   void initState() {
     super.initState();
-    selectedCategoryId = widget.fixedCategoryId; // Устанавливаем фиксированную категорию
+    selectedCategoryId = widget.fixedCategoryId;
     _initialize();
   }
 
@@ -97,11 +96,9 @@ class _UniversalSearchScreenState extends State<UniversalSearchScreen> {
         ApiService.location.getRegionsWithCities(),
       ];
 
-      // Только для услуг загружаем категории
       if (widget.type == SearchType.SERVICES) {
         futures.add(ApiService.category.getCategories());
 
-        // Если есть фиксированная категория, загружаем её подкатегории
         if (widget.fixedCategoryId != null) {
           futures.add(ApiService.subcategory.getSubcategoriesByCategory(widget.fixedCategoryId!));
         }
@@ -191,12 +188,10 @@ class _UniversalSearchScreenState extends State<UniversalSearchScreen> {
       print('Ответ API: $response');
 
       final parsed = _parseApiResponse(response);
-      final filteredItems = _applyClientFilters(parsed.items);
 
       print('Получено ${widget.type.name}: ${parsed.items.length}, всего: ${parsed.total}');
-      if (minPrice > 0) print('После фильтрации по minPrice ($minPrice): ${filteredItems.length}');
 
-      _updateSearchResults(filteredItems, parsed.total, resetPage);
+      _updateSearchResults(parsed.items, parsed.total, resetPage);
     } catch (e) {
       print('Ошибка поиска ${widget.type.name}: $e');
       _handleSearchError(resetPage);
@@ -237,22 +232,13 @@ class _UniversalSearchScreenState extends State<UniversalSearchScreen> {
     if (widget.type == SearchType.SERVICES) {
       if (selectedCategoryId != null) queryParams['categoryId'] = selectedCategoryId;
       if (selectedSubcategoryId != null) queryParams['subcategoryId'] = selectedSubcategoryId;
-      if (maxPrice < 100000) queryParams['price'] = maxPrice.toString();
+      if (maxPrice < 1000000) queryParams['price'] = maxPrice.toString();
     }
 
     // Общие фильтры
     if (selectedCityId != null) queryParams['cityId'] = selectedCityId;
 
     return queryParams;
-  }
-
-  List<Map<String, dynamic>> _applyClientFilters(List<Map<String, dynamic>> items) {
-    if (minPrice <= 0) return items;
-
-    return items.where((item) {
-      final itemPrice = double.tryParse(item['price']?.toString() ?? '0') ?? 0;
-      return itemPrice >= minPrice;
-    }).toList();
   }
 
   void _updateSearchResults(List<Map<String, dynamic>> items, int total, bool resetPage) {
@@ -345,8 +331,7 @@ class _UniversalSearchScreenState extends State<UniversalSearchScreen> {
       }
       selectedSubcategoryId = null;
       selectedCityId = null;
-      minPrice = 0;
-      maxPrice = 100000;
+      maxPrice = 1000000; // Обновлено
       selectedRating = null;
       if (widget.fixedCategoryId == null) {
         subcategories.clear();
@@ -366,7 +351,7 @@ class _UniversalSearchScreenState extends State<UniversalSearchScreen> {
   }
 
   bool _hasActiveFilters() {
-    bool hasFilters = selectedCityId != null || minPrice > 0 || maxPrice < 100000;
+    bool hasFilters = selectedCityId != null || maxPrice < 1000000; // Обновлено
 
     if (widget.type == SearchType.SERVICES) {
       hasFilters = hasFilters ||
@@ -401,8 +386,7 @@ class _UniversalSearchScreenState extends State<UniversalSearchScreen> {
         selectedCategoryId: selectedCategoryId,
         selectedSubcategoryId: selectedSubcategoryId,
         selectedCityId: selectedCityId,
-        minPrice: minPrice,
-        maxPrice: maxPrice,
+        maxPrice: maxPrice, // ТОЛЬКО maxPrice
         selectedRating: selectedRating,
         allowCategoryChange: widget.fixedCategoryId == null,
         onCategoryChanged: (value) {
@@ -417,9 +401,8 @@ class _UniversalSearchScreenState extends State<UniversalSearchScreen> {
         },
         onSubcategoryChanged: (value) => setState(() => selectedSubcategoryId = value),
         onCityChanged: (value) => setState(() => selectedCityId = value),
-        onPriceChanged: (min, max) => setState(() {
-          minPrice = min;
-          maxPrice = max;
+        onPriceChanged: (newMaxPrice) => setState(() { // ТОЛЬКО один параметр
+          maxPrice = newMaxPrice;
         }),
         onRatingChanged: (value) => setState(() => selectedRating = value),
         onReset: _resetFilters,
