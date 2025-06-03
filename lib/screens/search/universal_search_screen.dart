@@ -5,16 +5,27 @@ import '../../widgets/search_header.dart';
 import '../../widgets/search_results.dart';
 import '../../widgets/recent_searches.dart';
 import '../../widgets/no_results.dart';
-import '../../widgets/filter_bottom_sheet.dart';
+import '../../widgets/universal_filter_bottom_sheet.dart';
 
-class SearchSpecialistsScreen extends StatefulWidget {
-  const SearchSpecialistsScreen({super.key});
+enum SearchType { SERVICES, JOBS }
+
+class UniversalSearchScreen extends StatefulWidget {
+  final SearchType type;
+  final String? fixedCategoryId;
+  final String? title;
+
+  const UniversalSearchScreen({
+    super.key,
+    required this.type,
+    this.fixedCategoryId,
+    this.title,
+  });
 
   @override
-  State<SearchSpecialistsScreen> createState() => _SearchSpecialistsScreenState();
+  State<UniversalSearchScreen> createState() => _UniversalSearchScreenState();
 }
 
-class _SearchSpecialistsScreenState extends State<SearchSpecialistsScreen> {
+class _UniversalSearchScreenState extends State<UniversalSearchScreen> {
   final _searchController = TextEditingController();
   final _focusNode = FocusNode();
 
@@ -24,7 +35,7 @@ class _SearchSpecialistsScreenState extends State<SearchSpecialistsScreen> {
   List<Map<String, String>> categories = [];
   List<Map<String, String>> subcategories = [];
   List<Map<String, dynamic>> cities = [];
-  Set<String> favoriteServices = {};
+  Set<String> favoriteItems = {};
 
   // UI state
   bool isLoading = false;
@@ -42,12 +53,12 @@ class _SearchSpecialistsScreenState extends State<SearchSpecialistsScreen> {
   double maxPrice = 100000;
   int? selectedRating;
 
-  static const String _recentSearchesKey = 'recent_searches';
   static const int _pageSize = 20;
 
   @override
   void initState() {
     super.initState();
+    selectedCategoryId = widget.fixedCategoryId; // Устанавливаем фиксированную категорию
     _initialize();
   }
 
@@ -58,13 +69,23 @@ class _SearchSpecialistsScreenState extends State<SearchSpecialistsScreen> {
     super.dispose();
   }
 
+  String get _recentSearchesKey => 'recent_searches_${widget.type.name.toLowerCase()}';
+
+  String get _searchHint => widget.type == SearchType.SERVICES
+      ? 'Поиск специалистов...'
+      : 'Поиск объявлений...';
+
+  String get _screenTitle => widget.title ?? (widget.type == SearchType.SERVICES
+      ? 'Поиск услуг'
+      : 'Поиск объявлений');
+
   // INITIALIZATION
   Future<void> _initialize() async {
     await Future.wait([
       _loadRecentSearches(),
       _loadInitialData(),
     ]);
-    await _loadInitialServices();
+    await _loadInitialItems();
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _focusNode.requestFocus();
     });
@@ -72,14 +93,32 @@ class _SearchSpecialistsScreenState extends State<SearchSpecialistsScreen> {
 
   Future<void> _loadInitialData() async {
     try {
-      final results = await Future.wait([
-        ApiService.category.getCategories(),
+      List<Future> futures = [
         ApiService.location.getRegionsWithCities(),
-      ]);
+      ];
+
+      // Только для услуг загружаем категории
+      if (widget.type == SearchType.SERVICES) {
+        futures.add(ApiService.category.getCategories());
+
+        // Если есть фиксированная категория, загружаем её подкатегории
+        if (widget.fixedCategoryId != null) {
+          futures.add(ApiService.subcategory.getSubcategoriesByCategory(widget.fixedCategoryId!));
+        }
+      }
+
+      final results = await Future.wait(futures);
 
       setState(() {
-        categories = results[0] as List<Map<String, String>>;
-        cities = results[1] as List<Map<String, dynamic>>;
+        cities = results[0] as List<Map<String, dynamic>>;
+
+        if (widget.type == SearchType.SERVICES) {
+          categories = results[1] as List<Map<String, String>>;
+
+          if (widget.fixedCategoryId != null && results.length > 2) {
+            subcategories = results[2] as List<Map<String, String>>;
+          }
+        }
       });
 
       _logDataLoaded();
@@ -89,43 +128,45 @@ class _SearchSpecialistsScreenState extends State<SearchSpecialistsScreen> {
   }
 
   void _logDataLoaded() {
-    print('Загружено категорий: ${categories.length}');
     print('Загружено городов: ${cities.length}');
-    if (categories.isNotEmpty) print('Первая категория: ${categories.first}');
-    if (cities.isNotEmpty) print('Первый город: ${cities.first}');
+    if (widget.type == SearchType.SERVICES) {
+      print('Загружено категорий: ${categories.length}');
+      print('Загружено подкатегорий: ${subcategories.length}');
+    }
   }
 
   // API RESPONSE HANDLING
-  ({List<Map<String, dynamic>> services, int total}) _parseApiResponse(dynamic response) {
-    List<Map<String, dynamic>> services = [];
+  ({List<Map<String, dynamic>> items, int total}) _parseApiResponse(dynamic response) {
+    List<Map<String, dynamic>> items = [];
     int total = 0;
 
     if (response is Map<String, dynamic>) {
-      final servicesList = response['services'] as List<dynamic>?;
-      services = servicesList?.map<Map<String, dynamic>>(_mapToService).toList() ?? [];
+      final itemsKey = widget.type == SearchType.SERVICES ? 'services' : 'jobs';
+      final itemsList = response[itemsKey] as List<dynamic>?;
+      items = itemsList?.map<Map<String, dynamic>>(_mapToItem).toList() ?? [];
 
       final rawTotal = response['total'];
       total = rawTotal is int ? rawTotal : int.tryParse(rawTotal?.toString() ?? '0') ?? 0;
     } else if (response is List<dynamic>) {
-      services = response.map<Map<String, dynamic>>(_mapToService).toList();
-      total = services.length;
+      items = response.map<Map<String, dynamic>>(_mapToItem).toList();
+      total = items.length;
     }
 
-    return (services: services, total: total);
+    return (items: items, total: total);
   }
 
-  Map<String, dynamic> _mapToService(dynamic item) {
+  Map<String, dynamic> _mapToItem(dynamic item) {
     if (item is Map<String, dynamic>) {
       return item;
     } else if (item is Map) {
       return Map<String, dynamic>.from(item);
     } else {
-      throw Exception('Invalid service item type: ${item.runtimeType}');
+      throw Exception('Invalid item type: ${item.runtimeType}');
     }
   }
 
   // SEARCH AND LOADING
-  Future<void> _loadInitialServices() async {
+  Future<void> _loadInitialItems() async {
     await _performSearch(resetPage: true, showLoading: true);
   }
 
@@ -144,21 +185,30 @@ class _SearchSpecialistsScreenState extends State<SearchSpecialistsScreen> {
 
     try {
       final queryParams = _buildQueryParams(searchQuery);
-      print('Параметры поиска (страница $currentPage): $queryParams');
+      print('Параметры поиска ${widget.type.name} (страница $currentPage): $queryParams');
 
-      final response = await ApiService.service.searchServices(queryParams);
+      final response = await _callApiMethod(queryParams);
       print('Ответ API: $response');
 
       final parsed = _parseApiResponse(response);
-      final filteredServices = _applyClientFilters(parsed.services);
+      final filteredItems = _applyClientFilters(parsed.items);
 
-      print('Получено услуг: ${parsed.services.length}, всего: ${parsed.total}');
-      if (minPrice > 0) print('После фильтрации по minPrice ($minPrice): ${filteredServices.length}');
+      print('Получено ${widget.type.name}: ${parsed.items.length}, всего: ${parsed.total}');
+      if (minPrice > 0) print('После фильтрации по minPrice ($minPrice): ${filteredItems.length}');
 
-      _updateSearchResults(filteredServices, parsed.total, resetPage);
+      _updateSearchResults(filteredItems, parsed.total, resetPage);
     } catch (e) {
-      print('Ошибка поиска: $e');
+      print('Ошибка поиска ${widget.type.name}: $e');
       _handleSearchError(resetPage);
+    }
+  }
+
+  Future<dynamic> _callApiMethod(Map<String, dynamic> queryParams) {
+    switch (widget.type) {
+      case SearchType.SERVICES:
+        return ApiService.service.searchServices(queryParams);
+      case SearchType.JOBS:
+        return ApiService.job.searchJobs(queryParams);
     }
   }
 
@@ -182,34 +232,40 @@ class _SearchSpecialistsScreenState extends State<SearchSpecialistsScreen> {
     };
 
     if (searchQuery.isNotEmpty) queryParams['search'] = searchQuery;
-    if (selectedCategoryId != null) queryParams['categoryId'] = selectedCategoryId;
-    if (selectedSubcategoryId != null) queryParams['subcategoryId'] = selectedSubcategoryId;
+
+    // Фильтры для услуг
+    if (widget.type == SearchType.SERVICES) {
+      if (selectedCategoryId != null) queryParams['categoryId'] = selectedCategoryId;
+      if (selectedSubcategoryId != null) queryParams['subcategoryId'] = selectedSubcategoryId;
+      if (maxPrice < 100000) queryParams['price'] = maxPrice.toString();
+    }
+
+    // Общие фильтры
     if (selectedCityId != null) queryParams['cityId'] = selectedCityId;
-    if (maxPrice < 100000) queryParams['price'] = maxPrice.toString();
 
     return queryParams;
   }
 
-  List<Map<String, dynamic>> _applyClientFilters(List<Map<String, dynamic>> services) {
-    if (minPrice <= 0) return services;
+  List<Map<String, dynamic>> _applyClientFilters(List<Map<String, dynamic>> items) {
+    if (minPrice <= 0) return items;
 
-    return services.where((service) {
-      final servicePrice = double.tryParse(service['price']?.toString() ?? '0') ?? 0;
-      return servicePrice >= minPrice;
+    return items.where((item) {
+      final itemPrice = double.tryParse(item['price']?.toString() ?? '0') ?? 0;
+      return itemPrice >= minPrice;
     }).toList();
   }
 
-  void _updateSearchResults(List<Map<String, dynamic>> services, int total, bool resetPage) {
+  void _updateSearchResults(List<Map<String, dynamic>> items, int total, bool resetPage) {
     setState(() {
       if (resetPage) {
-        searchResults = services;
+        searchResults = items;
       } else {
-        searchResults.addAll(services);
+        searchResults.addAll(items);
       }
       totalResults = total;
       isLoading = false;
       isLoadingMore = false;
-      hasMoreData = services.length >= _pageSize;
+      hasMoreData = items.length >= _pageSize;
       if (!resetPage) currentPage++;
     });
   }
@@ -223,7 +279,7 @@ class _SearchSpecialistsScreenState extends State<SearchSpecialistsScreen> {
     });
   }
 
-  Future<void> _loadMoreServices() async {
+  Future<void> _loadMoreItems() async {
     if (isLoadingMore || !hasMoreData) return;
     currentPage++;
     await _performSearch(resetPage: false);
@@ -269,6 +325,8 @@ class _SearchSpecialistsScreenState extends State<SearchSpecialistsScreen> {
 
   // FILTERS
   Future<void> _loadSubcategories(String categoryId) async {
+    if (widget.type != SearchType.SERVICES) return;
+
     try {
       final subcategoriesData = await ApiService.subcategory.getSubcategoriesByCategory(categoryId);
       setState(() {
@@ -282,13 +340,17 @@ class _SearchSpecialistsScreenState extends State<SearchSpecialistsScreen> {
 
   void _resetFilters() {
     setState(() {
-      selectedCategoryId = null;
+      if (widget.fixedCategoryId == null) {
+        selectedCategoryId = null;
+      }
       selectedSubcategoryId = null;
       selectedCityId = null;
       minPrice = 0;
       maxPrice = 100000;
       selectedRating = null;
-      subcategories.clear();
+      if (widget.fixedCategoryId == null) {
+        subcategories.clear();
+      }
     });
   }
 
@@ -304,22 +366,26 @@ class _SearchSpecialistsScreenState extends State<SearchSpecialistsScreen> {
   }
 
   bool _hasActiveFilters() {
-    return selectedCategoryId != null ||
-        selectedSubcategoryId != null ||
-        selectedCityId != null ||
-        minPrice > 0 ||
-        maxPrice < 100000;
+    bool hasFilters = selectedCityId != null || minPrice > 0 || maxPrice < 100000;
+
+    if (widget.type == SearchType.SERVICES) {
+      hasFilters = hasFilters ||
+          (widget.fixedCategoryId == null && selectedCategoryId != null) ||
+          selectedSubcategoryId != null;
+    }
+
+    return hasFilters;
   }
 
-  void _toggleFavorite(String serviceId) {
+  void _toggleFavorite(String itemId) {
     setState(() {
-      if (favoriteServices.contains(serviceId)) {
-        favoriteServices.remove(serviceId);
+      if (favoriteItems.contains(itemId)) {
+        favoriteItems.remove(itemId);
       } else {
-        favoriteServices.add(serviceId);
+        favoriteItems.add(itemId);
       }
     });
-    print('${favoriteServices.contains(serviceId) ? 'Added to' : 'Removed from'} favorites: $serviceId');
+    print('${favoriteItems.contains(itemId) ? 'Added to' : 'Removed from'} favorites: $itemId');
   }
 
   void _showFilters() {
@@ -327,7 +393,8 @@ class _SearchSpecialistsScreenState extends State<SearchSpecialistsScreen> {
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
-      builder: (context) => FilterBottomSheet(
+      builder: (context) => UniversalFilterBottomSheet(
+        type: widget.type,
         categories: categories,
         subcategories: subcategories,
         cities: cities,
@@ -337,13 +404,16 @@ class _SearchSpecialistsScreenState extends State<SearchSpecialistsScreen> {
         minPrice: minPrice,
         maxPrice: maxPrice,
         selectedRating: selectedRating,
+        allowCategoryChange: widget.fixedCategoryId == null,
         onCategoryChanged: (value) {
-          setState(() {
-            selectedCategoryId = value;
-            selectedSubcategoryId = null;
-            subcategories.clear();
-          });
-          if (value != null) _loadSubcategories(value);
+          if (widget.fixedCategoryId == null) {
+            setState(() {
+              selectedCategoryId = value;
+              selectedSubcategoryId = null;
+              subcategories.clear();
+            });
+            if (value != null) _loadSubcategories(value);
+          }
         },
         onSubcategoryChanged: (value) => setState(() => selectedSubcategoryId = value),
         onCityChanged: (value) => setState(() => selectedCityId = value),
@@ -364,6 +434,9 @@ class _SearchSpecialistsScreenState extends State<SearchSpecialistsScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      appBar: AppBar(
+        title: Text(_screenTitle),
+      ),
       body: SafeArea(
         child: Column(
           children: [
@@ -371,9 +444,11 @@ class _SearchSpecialistsScreenState extends State<SearchSpecialistsScreen> {
               controller: _searchController,
               focusNode: _focusNode,
               hasActiveFilters: _hasActiveFilters(),
+              hintText: _searchHint,
               onSearch: (value) => _performSearch(query: value, resetPage: true),
               onFilterTap: _showFilters,
               onBack: () => Navigator.pop(context),
+              showBackButton: true,
             ),
             Expanded(
               child: !hasSearched
@@ -394,9 +469,9 @@ class _SearchSpecialistsScreenState extends State<SearchSpecialistsScreen> {
                 results: searchResults,
                 totalResults: totalResults,
                 isLoadingMore: isLoadingMore,
-                favoriteServices: favoriteServices,
+                favoriteServices: favoriteItems,
                 onFavoriteTap: _toggleFavorite,
-                onLoadMore: _loadMoreServices,
+                onLoadMore: _loadMoreItems,
               ),
             ),
           ],

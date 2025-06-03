@@ -4,18 +4,22 @@ class SearchHeader extends StatelessWidget {
   final TextEditingController controller;
   final FocusNode focusNode;
   final bool hasActiveFilters;
+  final String hintText;
   final Function(String) onSearch;
   final VoidCallback onFilterTap;
   final VoidCallback onBack;
+  final bool showBackButton;
 
   const SearchHeader({
     super.key,
     required this.controller,
     required this.focusNode,
     required this.hasActiveFilters,
+    required this.hintText,
     required this.onSearch,
     required this.onFilterTap,
     required this.onBack,
+    this.showBackButton = true,
   });
 
   @override
@@ -24,11 +28,13 @@ class SearchHeader extends StatelessWidget {
       padding: const EdgeInsets.all(16),
       child: Row(
         children: [
-          IconButton(
-            icon: const Icon(Icons.arrow_back),
-            onPressed: onBack,
-          ),
-          const SizedBox(width: 8),
+          if (showBackButton) ...[
+            IconButton(
+              icon: const Icon(Icons.arrow_back),
+              onPressed: onBack,
+            ),
+            const SizedBox(width: 8),
+          ],
           Expanded(
             child: Container(
               decoration: BoxDecoration(
@@ -39,11 +45,11 @@ class SearchHeader extends StatelessWidget {
               child: TextField(
                 controller: controller,
                 focusNode: focusNode,
-                decoration: const InputDecoration(
-                  hintText: 'Поиск специалистов...',
-                  prefixIcon: Icon(Icons.search, color: Colors.grey),
+                decoration: InputDecoration(
+                  hintText: hintText,
+                  prefixIcon: const Icon(Icons.search, color: Colors.grey),
                   border: InputBorder.none,
-                  contentPadding: EdgeInsets.symmetric(
+                  contentPadding: const EdgeInsets.symmetric(
                     horizontal: 16,
                     vertical: 12,
                   ),

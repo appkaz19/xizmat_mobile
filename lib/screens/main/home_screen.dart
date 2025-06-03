@@ -1,8 +1,6 @@
 import 'package:flutter/material.dart';
 import '../../widgets/search_bar_widget.dart';
-import '../services/services_list_screen.dart';
-import '../../models/service_category.dart';
-import '../search/search_specialists_screen.dart';
+import '../search/universal_search_screen.dart';
 import '../services/add_service_screen.dart';
 
 class HomeScreen extends StatefulWidget {
@@ -97,7 +95,9 @@ class _HomeScreenState extends State<HomeScreen> {
                       Navigator.push(
                         context,
                         MaterialPageRoute(
-                          builder: (context) => const SearchSpecialistsScreen(),
+                          builder: (context) => const UniversalSearchScreen(
+                              type: SearchType.SERVICES
+                          ),
                         ),
                       );
                     },
