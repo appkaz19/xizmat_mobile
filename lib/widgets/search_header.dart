@@ -28,13 +28,6 @@ class SearchHeader extends StatelessWidget {
       padding: const EdgeInsets.all(16),
       child: Row(
         children: [
-          // if (showBackButton) ...[
-          //   IconButton(
-          //     icon: const Icon(Icons.arrow_back),
-          //     onPressed: onBack,
-          //   ),
-          //   const SizedBox(width: 8),
-          // ],
           Expanded(
             child: Container(
               decoration: BoxDecoration(
