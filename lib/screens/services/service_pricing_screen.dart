@@ -1,8 +1,14 @@
 import 'package:flutter/material.dart';
-import 'service_payment_screen.dart';
+import '../../services/api/service.dart';
+import '../../utils/app_theme.dart';
 
 class ServicePricingScreen extends StatefulWidget {
-  const ServicePricingScreen({super.key});
+  final Map<String, dynamic> serviceData;
+
+  const ServicePricingScreen({
+    super.key,
+    required this.serviceData,
+  });
 
   @override
   State<ServicePricingScreen> createState() => _ServicePricingScreenState();
@@ -10,45 +16,55 @@ class ServicePricingScreen extends StatefulWidget {
 
 class _ServicePricingScreenState extends State<ServicePricingScreen> {
   String? _selectedPlan;
+  bool _isCreatingService = false;
 
   final List<Map<String, dynamic>> pricingPlans = [
     {
-      'id': 'light',
-      'title': 'Легкий старт',
-      'subtitle': '(4x просмотров)',
-      'price': 700,
+      'id': 'free',
+      'title': 'Бесплатная публикация',
+      'subtitle': 'Без продвижения',
+      'price': 0,
+      'days': 0,
       'features': [
-        'ТОП-объявление на 3 дня',
-        'Поднятие в верх списка',
-        'VIP-объявление',
+        'Обычное размещение',
+        'Стандартная видимость',
+        'Без временных ограничений',
       ],
-      'icon': '💡',
+      'icon': '📝',
     },
     {
-      'id': 'fast',
-      'title': 'Быстрая продажа',
-      'subtitle': '(16x просмотров)',
-      'price': 1500,
+      'id': 'basic',
+      'title': 'Базовое продвижение',
+      'subtitle': 'Повышенная видимость',
+      'price': 400,
+      'days': 3,
       'features': [
-        'ТОП-объявление на 7 дней',
-        '3 поднятия в верх списка',
-        'VIP-объявление',
+        'ТОП размещение на 3 дня',
+        'Повышенная видимость',
+        'Больше просмотров',
       ],
-      'icon': '⚡',
+      'icon': '⭐',
     },
     {
-      'id': 'turbo',
-      'title': 'Турбо продажа',
-      'subtitle': '(30x просмотров)',
-      'price': 3000,
+      'id': 'premium',
+      'title': 'Премиум продвижение',
+      'subtitle': 'Максимальная видимость',
+      'price': 600,
+      'days': 7,
       'features': [
-        'ТОП-объявление на 30 дней',
-        '9 поднятий в верх списка',
-        'VIP-объявление на 7 дней',
+        'ТОП размещение на 7 дней',
+        'Максимальная видимость',
+        'Приоритетный показ',
       ],
       'icon': '🚀',
     },
   ];
+
+  @override
+  void initState() {
+    super.initState();
+    _selectedPlan = 'free'; // По умолчанию выбрана бесплатная публикация
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -58,30 +74,73 @@ class _ServicePricingScreenState extends State<ServicePricingScreen> {
           icon: const Icon(Icons.arrow_back),
           onPressed: () => Navigator.pop(context),
         ),
-        title: const Text('Добавление услуги'),
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.help_outline),
-            onPressed: () {
-              // Show help
-            },
-          ),
-        ],
+        title: const Text('Публикация услуги'),
       ),
       body: SingleChildScrollView(
         padding: const EdgeInsets.all(16),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
+            // Service Info Card
+            Container(
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: AppColors.primary.withOpacity(0.1),
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: AppColors.primary.withOpacity(0.3)),
+              ),
+              child: Row(
+                children: [
+                  Container(
+                    padding: const EdgeInsets.all(8),
+                    decoration: const BoxDecoration(
+                      color: AppColors.primary,
+                      shape: BoxShape.circle,
+                    ),
+                    child: const Icon(
+                      Icons.build,
+                      color: Colors.white,
+                      size: 20,
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          widget.serviceData['title'] ?? '',
+                          style: const TextStyle(
+                            fontWeight: FontWeight.bold,
+                            fontSize: 16,
+                          ),
+                        ),
+                        const SizedBox(height: 4),
+                        Text(
+                          '${widget.serviceData['price']} тенге',
+                          style: TextStyle(
+                            color: Colors.grey[600],
+                            fontSize: 14,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ),
+
+            const SizedBox(height: 24),
+
             const Text(
-              'Наборы платных услуг',
+              'Выберите тип публикации',
               style: TextStyle(
                 fontSize: 20,
                 fontWeight: FontWeight.bold,
               ),
             ),
 
-            const SizedBox(height: 24),
+            const SizedBox(height: 16),
 
             // Pricing Plans
             ...pricingPlans.map((plan) => Container(
@@ -89,7 +148,7 @@ class _ServicePricingScreenState extends State<ServicePricingScreen> {
               decoration: BoxDecoration(
                 border: Border.all(
                   color: _selectedPlan == plan['id']
-                      ? const Color(0xFF2E7D5F)
+                      ? AppColors.primary
                       : Colors.grey[300]!,
                   width: 2,
                 ),
@@ -131,23 +190,44 @@ class _ServicePricingScreenState extends State<ServicePricingScreen> {
                         ],
                       ),
                     ),
-                    Container(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 12,
-                        vertical: 6,
-                      ),
-                      decoration: BoxDecoration(
-                        color: const Color(0xFFFFC107),
-                        borderRadius: BorderRadius.circular(16),
-                      ),
-                      child: Text(
-                        '${plan['price']} монет',
-                        style: const TextStyle(
-                          fontWeight: FontWeight.bold,
-                          fontSize: 12,
+                    if (plan['price'] > 0)
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 12,
+                          vertical: 6,
+                        ),
+                        decoration: BoxDecoration(
+                          color: AppColors.secondary,
+                          borderRadius: BorderRadius.circular(16),
+                        ),
+                        child: Text(
+                          '${plan['price']} монет',
+                          style: const TextStyle(
+                            fontWeight: FontWeight.bold,
+                            fontSize: 12,
+                            color: Colors.black,
+                          ),
+                        ),
+                      )
+                    else
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 12,
+                          vertical: 6,
+                        ),
+                        decoration: BoxDecoration(
+                          color: Colors.green,
+                          borderRadius: BorderRadius.circular(16),
+                        ),
+                        child: const Text(
+                          'Бесплатно',
+                          style: TextStyle(
+                            fontWeight: FontWeight.bold,
+                            fontSize: 12,
+                            color: Colors.white,
+                          ),
                         ),
                       ),
-                    ),
                   ],
                 ),
                 subtitle: Padding(
@@ -159,10 +239,10 @@ class _ServicePricingScreenState extends State<ServicePricingScreen> {
                           padding: const EdgeInsets.only(bottom: 4),
                           child: Row(
                             children: [
-                              const Icon(
+                              Icon(
                                 Icons.check,
                                 size: 16,
-                                color: Color(0xFF2E7D5F),
+                                color: plan['price'] > 0 ? AppColors.primary : Colors.green,
                               ),
                               const SizedBox(width: 8),
                               Text(
@@ -175,94 +255,191 @@ class _ServicePricingScreenState extends State<ServicePricingScreen> {
                     ).toList(),
                   ),
                 ),
-                activeColor: const Color(0xFF2E7D5F),
+                activeColor: AppColors.primary,
                 contentPadding: const EdgeInsets.all(16),
               ),
             )),
 
             const SizedBox(height: 32),
 
-            // Action Buttons
-            Row(
-              children: [
-                Expanded(
-                  child: OutlinedButton(
-                    onPressed: () {
-                      // Publish without paid services
-                      _showSuccessDialog();
-                    },
-                    style: OutlinedButton.styleFrom(
-                      padding: const EdgeInsets.symmetric(vertical: 16),
-                      side: const BorderSide(color: Color(0xFF2E7D5F)),
-                    ),
-                    child: const Text(
-                      'Опубликовать\nбез услуг',
-                      textAlign: TextAlign.center,
-                      style: TextStyle(
-                        color: Color(0xFF2E7D5F),
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
+            // Publish Button
+            SizedBox(
+              width: double.infinity,
+              child: ElevatedButton(
+                onPressed: _isCreatingService ? null : _publishService,
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: _isCreatingService ? Colors.grey : AppColors.secondary,
+                  foregroundColor: Colors.black,
+                  padding: const EdgeInsets.symmetric(vertical: 16),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(8),
                   ),
                 ),
-
-                const SizedBox(width: 16),
-
-                Expanded(
-                  child: ElevatedButton(
-                    onPressed: _selectedPlan != null ? _proceedToPayment : null,
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: _selectedPlan != null
-                          ? const Color(0xFFFFC107)
-                          : Colors.grey,
-                      foregroundColor: Colors.black,
-                      padding: const EdgeInsets.symmetric(vertical: 16),
+                child: _isCreatingService
+                    ? const Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    SizedBox(
+                      width: 20,
+                      height: 20,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2,
+                        valueColor: AlwaysStoppedAnimation(Colors.black),
+                      ),
                     ),
-                    child: const Text(
-                      'Опубликовать\nс услугой',
-                      textAlign: TextAlign.center,
+                    SizedBox(width: 12),
+                    Text(
+                      'Публикация...',
                       style: TextStyle(
+                        fontSize: 16,
                         fontWeight: FontWeight.bold,
                       ),
                     ),
+                  ],
+                )
+                    : Text(
+                  _getSelectedPlan()['price'] > 0
+                      ? 'Опубликовать за ${_getSelectedPlan()['price']} монет'
+                      : 'Опубликовать бесплатно',
+                  style: const TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.bold,
                   ),
                 ),
-              ],
+              ),
             ),
+
+            const SizedBox(height: 16),
+
+            // Info about selected plan
+            if (_getSelectedPlan()['price'] > 0)
+              Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: AppColors.primary.withOpacity(0.1),
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(color: AppColors.primary.withOpacity(0.3)),
+                ),
+                child: Row(
+                  children: [
+                    Icon(Icons.info_outline, color: AppColors.primary, size: 20),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        'Ваша услуга будет продвигаться ${_getSelectedPlan()['days']} дней',
+                        style: TextStyle(
+                          color: AppColors.primary,
+                          fontSize: 14,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
           ],
         ),
       ),
     );
   }
 
-  void _proceedToPayment() {
-    final selectedPlan = pricingPlans.firstWhere(
-          (plan) => plan['id'] == _selectedPlan,
-    );
+  Map<String, dynamic> _getSelectedPlan() {
+    return pricingPlans.firstWhere((plan) => plan['id'] == _selectedPlan);
+  }
 
-    Navigator.push(
-      context,
-      MaterialPageRoute(
-        builder: (context) => ServicePaymentScreen(
-          planTitle: selectedPlan['title'],
-          planPrice: selectedPlan['price'],
+  Future<void> _publishService() async {
+    setState(() => _isCreatingService = true);
+
+    try {
+      // Создаем услугу
+      final serviceResponse = await ApiService.service.createService(widget.serviceData);
+
+      if (serviceResponse == null) {
+        throw Exception('Не удалось создать услугу');
+      }
+
+      final serviceId = serviceResponse['id'];
+      final selectedPlan = _getSelectedPlan();
+
+      // Если выбран платный план, продвигаем услугу
+      if (selectedPlan['price'] > 0 && selectedPlan['days'] > 0) {
+        final promoteSuccess = await ApiService.service.promoteService(
+          serviceId,
+          selectedPlan['days'],
+        );
+
+        if (!promoteSuccess) {
+          // Услуга создана, но продвижение не удалось
+          _showPartialSuccessDialog();
+          return;
+        }
+      }
+
+      // Все прошло успешно
+      _showSuccessDialog();
+
+    } catch (e) {
+      setState(() => _isCreatingService = false);
+      print('Ошибка публикации услуги: $e');
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Ошибка публикации: ${e.toString()}'),
+          backgroundColor: Colors.red,
         ),
-      ),
-    );
+      );
+    }
   }
 
   void _showSuccessDialog() {
+    final selectedPlan = _getSelectedPlan();
+
     showDialog(
       context: context,
+      barrierDismissible: false,
       builder: (context) => AlertDialog(
+        icon: const Icon(
+          Icons.check_circle,
+          color: Colors.green,
+          size: 48,
+        ),
         title: const Text('Успешно!'),
-        content: const Text('Ваша услуга успешно опубликована!'),
+        content: Text(
+          selectedPlan['price'] > 0
+              ? 'Ваша услуга успешно опубликована и продвигается ${selectedPlan['days']} дней!'
+              : 'Ваша услуга успешно опубликована!',
+        ),
         actions: [
           TextButton(
             onPressed: () {
               Navigator.of(context).popUntil((route) => route.isFirst);
             },
-            child: const Text('OK'),
+            child: const Text('Отлично!'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _showPartialSuccessDialog() {
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => AlertDialog(
+        icon: const Icon(
+          Icons.warning,
+          color: Colors.orange,
+          size: 48,
+        ),
+        title: const Text('Частично успешно'),
+        content: const Text(
+          'Услуга опубликована, но продвижение не удалось. Возможно, недостаточно монет на счету.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () {
+              Navigator.of(context).popUntil((route) => route.isFirst);
+            },
+            child: const Text('Понятно'),
           ),
         ],
       ),

@@ -1,13 +1,9 @@
 import 'package:flutter/material.dart';
-import '../../../utils/app_theme.dart';
-import '../../../utils/video_manager.dart';
-import 'video_thumbnail_widget.dart';
-import 'package:chewie/chewie.dart';
 
 class ServiceMediaCarousel extends StatefulWidget {
-  final List<dynamic> media;
+  final List<String> images;
 
-  const ServiceMediaCarousel({super.key, required this.media});
+  const ServiceMediaCarousel({super.key, required this.images});
 
   @override
   State<ServiceMediaCarousel> createState() => _ServiceMediaCarouselState();
@@ -16,7 +12,6 @@ class ServiceMediaCarousel extends StatefulWidget {
 class _ServiceMediaCarouselState extends State<ServiceMediaCarousel> {
   final PageController _pageController = PageController();
   int _currentPage = 0;
-  final VideoManager _videoManager = VideoManager();
 
   @override
   void dispose() {
@@ -26,31 +21,52 @@ class _ServiceMediaCarouselState extends State<ServiceMediaCarousel> {
 
   @override
   Widget build(BuildContext context) {
+    if (widget.images.isEmpty) {
+      return _buildDefaultImage();
+    }
+
     return Stack(
       children: [
         PageView.builder(
           controller: _pageController,
-          itemCount: widget.media.length,
+          itemCount: widget.images.length,
           onPageChanged: (index) {
             setState(() => _currentPage = index);
-
-            // Останавливаем все видео при смене страницы
-            _videoManager.pauseAllVideos();
           },
           itemBuilder: (context, index) {
-            final item = widget.media[index];
-
-            if (item['type'] == 'video') {
-              return VideoCarouselItem(videoUrl: item['url']);
-            }
-
             return Image.network(
-              item['url'],
+              widget.images[index],
               fit: BoxFit.cover,
+              loadingBuilder: (context, child, loadingProgress) {
+                if (loadingProgress == null) return child;
+                return Container(
+                  color: Colors.grey[200],
+                  child: Center(
+                    child: CircularProgressIndicator(
+                      value: loadingProgress.expectedTotalBytes != null
+                          ? loadingProgress.cumulativeBytesLoaded /
+                          (loadingProgress.expectedTotalBytes ?? 1)
+                          : null,
+                      strokeWidth: 2,
+                      color: Colors.grey[400],
+                    ),
+                  ),
+                );
+              },
               errorBuilder: (context, error, stackTrace) {
                 return Container(
                   color: Colors.grey[300],
-                  child: const Icon(Icons.image, size: 80, color: Colors.grey),
+                  child: const Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Icon(Icons.image_not_supported, size: 60, color: Colors.grey),
+                      SizedBox(height: 8),
+                      Text(
+                        'Не удалось загрузить фото',
+                        style: TextStyle(color: Colors.grey),
+                      ),
+                    ],
+                  ),
                 );
               },
             );
@@ -58,14 +74,14 @@ class _ServiceMediaCarouselState extends State<ServiceMediaCarousel> {
         ),
 
         // Page indicators
-        if (widget.media.length > 1)
+        if (widget.images.length > 1)
           Positioned(
             bottom: 16,
             left: 0,
             right: 0,
             child: Row(
               mainAxisAlignment: MainAxisAlignment.center,
-              children: widget.media.asMap().entries.map((entry) {
+              children: widget.images.asMap().entries.map((entry) {
                 return Container(
                   width: 8,
                   height: 8,
@@ -75,78 +91,74 @@ class _ServiceMediaCarouselState extends State<ServiceMediaCarousel> {
                     color: _currentPage == entry.key
                         ? Colors.white
                         : Colors.white.withOpacity(0.4),
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.black.withOpacity(0.3),
+                        blurRadius: 2,
+                        offset: const Offset(0, 1),
+                      ),
+                    ],
                   ),
                 );
               }).toList(),
             ),
           ),
+
+        // Photo counter in top right
+        if (widget.images.length > 1)
+          Positioned(
+            top: 16,
+            right: 16,
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+              decoration: BoxDecoration(
+                color: Colors.black.withOpacity(0.6),
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: Text(
+                '${_currentPage + 1}/${widget.images.length}',
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontSize: 12,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ),
+          ),
       ],
     );
   }
-}
 
-// Компонент для отображения видео в карусели
-class VideoCarouselItem extends StatefulWidget {
-  final String videoUrl;
-
-  const VideoCarouselItem({super.key, required this.videoUrl});
-
-  @override
-  State<VideoCarouselItem> createState() => _VideoCarouselItemState();
-}
-
-class _VideoCarouselItemState extends State<VideoCarouselItem> {
-  ChewieController? _chewieController;
-  bool _showPlayer = false;
-
-  @override
-  void initState() {
-    super.initState();
-    _initializePlayer();
-  }
-
-  Future<void> _initializePlayer() async {
-    _chewieController = await VideoManager().getChewieController(
-      widget.videoUrl,
-      primaryColor: AppColors.primary,
-    );
-    if (mounted) setState(() {});
-  }
-
-  void _showVideoPlayer() {
-    setState(() {
-      _showPlayer = true;
-    });
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    if (!_showPlayer) {
-      // Показываем превью с кнопкой воспроизведения
-      return VideoThumbnailWidget(
-        videoUrl: widget.videoUrl,
-        fit: BoxFit.cover,
-        onTap: _showVideoPlayer,
-      );
-    }
-
-    // Показываем плеер
-    if (_chewieController != null) {
-      return Container(
-        color: Colors.black,
-        child: Center(
-          child: AspectRatio(
-            aspectRatio: _chewieController!.videoPlayerController.value.aspectRatio,
-            child: Chewie(controller: _chewieController!),
-          ),
-        ),
-      );
-    }
-
+  Widget _buildDefaultImage() {
     return Container(
-      color: Colors.black,
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          colors: [
+            Colors.purple.withOpacity(0.8),
+            Colors.blue.withOpacity(0.8),
+          ],
+        ),
+      ),
       child: const Center(
-        child: CircularProgressIndicator(color: Colors.white),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(
+              Icons.camera_alt,
+              size: 60,
+              color: Colors.white,
+            ),
+            SizedBox(height: 12),
+            Text(
+              'Фото не добавлены',
+              style: TextStyle(
+                color: Colors.white,
+                fontSize: 16,
+                fontWeight: FontWeight.w500,
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }

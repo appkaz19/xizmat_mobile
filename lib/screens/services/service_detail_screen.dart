@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../../services/api/service.dart';
 import '../../utils/app_theme.dart';
-import '../../utils/video_manager.dart';
 import '../../utils/favorites_utils.dart';
 import '../../widgets/service_media_carousel.dart';
 import '../../widgets/media_grid_preview.dart';
@@ -171,34 +170,15 @@ class _ServiceDetailScreenState extends State<ServiceDetailScreen> {
     return sum / reviews.length;
   }
 
-  List<dynamic> _getAllMedia() {
+  List<String> _getAllImages() {
     final images = serviceData?['images'] as List<dynamic>? ?? [];
-    final videos = serviceData?['videos'] as List<dynamic>? ?? [];
-
-    final List<dynamic> allMedia = [];
-
-    for (final image in images) {
-      allMedia.add({'type': 'image', 'url': image});
-    }
-
-    for (final video in videos) {
-      allMedia.add({'type': 'video', 'url': video});
-    }
-
-    return allMedia;
+    return images.map((image) => image.toString()).toList();
   }
 
   String _getReviewEnding(int count) {
     if (count == 1) return '';
     if (count > 1 && count < 5) return 'а';
     return 'ов';
-  }
-
-  @override
-  void dispose() {
-    // Очищаем видео ресурсы при закрытии экрана
-    VideoManager().dispose();
-    super.dispose();
   }
 
   @override
@@ -221,7 +201,7 @@ class _ServiceDetailScreenState extends State<ServiceDetailScreen> {
       );
     }
 
-    final allMedia = _getAllMedia();
+    final allImages = _getAllImages();
     final user = serviceData!['user'] as Map<String, dynamic>? ?? {};
     final providerName = user['fullName'] ?? 'Неизвестно';
     final title = serviceData!['title'] ?? 'Без названия';
@@ -237,8 +217,8 @@ class _ServiceDetailScreenState extends State<ServiceDetailScreen> {
             expandedHeight: 300,
             pinned: true,
             flexibleSpace: FlexibleSpaceBar(
-              background: allMedia.isNotEmpty
-                  ? ServiceMediaCarousel(media: allMedia)
+              background: allImages.isNotEmpty
+                  ? ServiceMediaCarousel(images: allImages)
                   : _buildDefaultImage(),
             ),
             actions: [
@@ -365,33 +345,37 @@ class _ServiceDetailScreenState extends State<ServiceDetailScreen> {
 
                   const SizedBox(height: 32),
 
-                  // Photos & Videos Section
-                  if (allMedia.isNotEmpty) ...[
+                  // Photos Section
+                  if (allImages.isNotEmpty) ...[
                     Row(
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
-                        const Text(
-                          'Фото и видео',
-                          style: TextStyle(
+                        Text(
+                          allImages.length == 1 ? 'Фото' : 'Фото (${allImages.length})',
+                          style: const TextStyle(
                             fontSize: 22,
                             fontWeight: FontWeight.bold,
                           ),
                         ),
-                        TextButton(
-                          onPressed: () {
-                            _showFullGallery(allMedia);
-                          },
-                          child: const Text(
-                            'Посмотреть все',
-                            style: TextStyle(color: AppColors.primary),
+                        if (allImages.length > 1)
+                          TextButton(
+                            onPressed: () {
+                              _showFullGallery(allImages);
+                            },
+                            child: const Text(
+                              'Посмотреть все',
+                              style: TextStyle(color: AppColors.primary),
+                            ),
                           ),
-                        ),
                       ],
                     ),
 
                     const SizedBox(height: 16),
 
-                    MediaGridPreview(media: allMedia, onTap: _showFullGallery),
+                    MediaGridPreview(
+                      images: allImages,
+                      onTap: (List<String> images) => _showFullGallery(images),
+                    ),
 
                     const SizedBox(height: 32),
                   ],
@@ -453,10 +437,10 @@ class _ServiceDetailScreenState extends State<ServiceDetailScreen> {
     );
   }
 
-  void _showFullGallery(List<dynamic> media) {
+  void _showFullGallery(List<String> images) {
     showDialog(
       context: context,
-      builder: (context) => FullGalleryModal(media: media),
+      builder: (context) => FullGalleryModal(images: images),
     );
   }
 
@@ -471,10 +455,24 @@ class _ServiceDetailScreenState extends State<ServiceDetailScreen> {
         ),
       ),
       child: const Center(
-        child: Icon(
-          Icons.build,
-          size: 80,
-          color: Colors.white,
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(
+              Icons.camera_alt,
+              size: 60,
+              color: Colors.white,
+            ),
+            SizedBox(height: 12),
+            Text(
+              'Фото не добавлены',
+              style: TextStyle(
+                color: Colors.white,
+                fontSize: 16,
+                fontWeight: FontWeight.w500,
+              ),
+            ),
+          ],
         ),
       ),
     );
