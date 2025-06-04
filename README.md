@@ -1,16 +1,49 @@
-# xizmat_mobile
+# Xizmat Mobile
 
-A new Flutter project.
+Приложение маркетплейса услуг, написанное на Flutter. В проекте используется `Provider` для управления состоянием и собственные API-сервисы для взаимодействия с бэкендом.
 
-## Getting Started
+## Архитектура
 
-This project is a starting point for a Flutter application.
+```
+lib/
+  models/        модели данных
+  providers/     провайдеры состояния (auth, favorites, services)
+  screens/       экраны приложения
+  services/      работа с API и хранилищем
+  utils/         вспомогательные утилиты
+  widgets/       переиспользуемые виджеты
+```
 
-A few resources to get you started if this is your first Flutter project:
+- **screens/** содержит модули по функциональности: авторизация, поиск, услуги, объявления и т.д.
+- **services/api** делится на файлы с методами для каждого раздела API.
+- **widgets/filters** – отдельные компоненты для фильтрации контента.
 
-- [Lab: Write your first Flutter app](https://docs.flutter.dev/get-started/codelab)
-- [Cookbook: Useful Flutter samples](https://docs.flutter.dev/cookbook)
+## Ключевые компоненты
 
-For help getting started with Flutter development, view the
-[online documentation](https://docs.flutter.dev/), which offers tutorials,
-samples, guidance on mobile development, and a full API reference.
+- `universal_search_screen.dart` – единый экран поиска услуг и объявлений.
+- `universal_item_card.dart` – универсальная карточка элемента в выдаче.
+- `favorites_provider.dart` и `favorites_screen.dart` – управление избранным и его отображение.
+- `universal_filter_bottom_sheet.dart` и связанные секции фильтров.
+
+## Реализованный функционал
+
+- Авторизация (тестовый номер 0000/пароль 0000).
+- Добавление услуг и объявлений (списание монет при продвижении).
+- Доска объявлений и поиск специалистов.
+- Избранное и отзывы на услуги.
+- Покупка контактов за монеты.
+
+## Известные проблемы и TODO
+
+- Некоторые экраны ещё содержат заглушки или требуют доработки.
+- В каталоге `assets/icons` нет файлов – строка подключения удалена из `pubspec.yaml`.
+- Большие экраны постепенно выносятся на отдельные виджеты для упрощения поддержки.
+
+## Запуск
+
+```bash
+flutter pub get
+flutter run
+```
+
+MVP уже работает, но проект продолжает активно развиваться.
