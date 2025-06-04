@@ -1,11 +1,13 @@
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import '../../providers/favorites_provider.dart';
 import '../../services/api/service.dart';
 import '../../widgets/search_header.dart';
-import '../../widgets/search_results.dart';
 import '../../widgets/recent_searches.dart';
 import '../../widgets/no_results.dart';
 import '../../widgets/universal_filter_bottom_sheet.dart';
+import 'universal_item_card.dart'; // Добавили импорт
 
 enum SearchType { SERVICES, JOBS }
 
@@ -35,7 +37,6 @@ class _UniversalSearchScreenState extends State<UniversalSearchScreen> {
   List<Map<String, String>> categories = [];
   List<Map<String, String>> subcategories = [];
   List<Map<String, dynamic>> cities = [];
-  Set<String> favoriteItems = {};
 
   // UI state
   bool isLoading = false;
@@ -45,11 +46,11 @@ class _UniversalSearchScreenState extends State<UniversalSearchScreen> {
   int currentPage = 1;
   int totalResults = 0;
 
-  // Filter state - ОБНОВЛЕНО
+  // Filter state
   String? selectedCategoryId;
   String? selectedSubcategoryId;
   String? selectedCityId;
-  int maxPrice = 1000000; // Изменили на int и убрали minPrice
+  int maxPrice = 1000000;
   int? selectedRating;
 
   static const int _pageSize = 20;
@@ -80,6 +81,12 @@ class _UniversalSearchScreenState extends State<UniversalSearchScreen> {
 
   // INITIALIZATION
   Future<void> _initialize() async {
+    // Инициализируем FavoritesProvider
+    final favoritesProvider = Provider.of<FavoritesProvider>(context, listen: false);
+    if (!favoritesProvider.isInitialized) {
+      await favoritesProvider.initialize();
+    }
+
     await Future.wait([
       _loadRecentSearches(),
       _loadInitialData(),
@@ -232,11 +239,11 @@ class _UniversalSearchScreenState extends State<UniversalSearchScreen> {
     if (widget.type == SearchType.SERVICES) {
       if (selectedCategoryId != null) queryParams['categoryId'] = selectedCategoryId;
       if (selectedSubcategoryId != null) queryParams['subcategoryId'] = selectedSubcategoryId;
-      if (maxPrice < 1000000) queryParams['price'] = maxPrice.toString();
     }
 
     // Общие фильтры
     if (selectedCityId != null) queryParams['cityId'] = selectedCityId;
+    if (maxPrice > 0 && maxPrice < 1000000) queryParams['price'] = maxPrice.toString();
 
     return queryParams;
   }
@@ -267,7 +274,6 @@ class _UniversalSearchScreenState extends State<UniversalSearchScreen> {
 
   Future<void> _loadMoreItems() async {
     if (isLoadingMore || !hasMoreData) return;
-    currentPage++;
     await _performSearch(resetPage: false);
   }
 
@@ -331,7 +337,7 @@ class _UniversalSearchScreenState extends State<UniversalSearchScreen> {
       }
       selectedSubcategoryId = null;
       selectedCityId = null;
-      maxPrice = 1000000; // Обновлено
+      maxPrice = 1000000;
       selectedRating = null;
       if (widget.fixedCategoryId == null) {
         subcategories.clear();
@@ -351,7 +357,7 @@ class _UniversalSearchScreenState extends State<UniversalSearchScreen> {
   }
 
   bool _hasActiveFilters() {
-    bool hasFilters = selectedCityId != null || maxPrice < 1000000; // Обновлено
+    bool hasFilters = selectedCityId != null || maxPrice < 1000000;
 
     if (widget.type == SearchType.SERVICES) {
       hasFilters = hasFilters ||
@@ -362,15 +368,14 @@ class _UniversalSearchScreenState extends State<UniversalSearchScreen> {
     return hasFilters;
   }
 
-  void _toggleFavorite(String itemId) {
-    setState(() {
-      if (favoriteItems.contains(itemId)) {
-        favoriteItems.remove(itemId);
-      } else {
-        favoriteItems.add(itemId);
-      }
-    });
-    print('${favoriteItems.contains(itemId) ? 'Added to' : 'Removed from'} favorites: $itemId');
+  void _toggleFavorite(String itemId) async {
+    final favoritesProvider = Provider.of<FavoritesProvider>(context, listen: false);
+
+    if (widget.type == SearchType.SERVICES) {
+      await favoritesProvider.toggleServiceFavorite(itemId);
+    } else {
+      await favoritesProvider.toggleJobFavorite(itemId);
+    }
   }
 
   void _showFilters() {
@@ -386,7 +391,7 @@ class _UniversalSearchScreenState extends State<UniversalSearchScreen> {
         selectedCategoryId: selectedCategoryId,
         selectedSubcategoryId: selectedSubcategoryId,
         selectedCityId: selectedCityId,
-        maxPrice: maxPrice, // ТОЛЬКО maxPrice
+        maxPrice: maxPrice,
         selectedRating: selectedRating,
         allowCategoryChange: widget.fixedCategoryId == null,
         onCategoryChanged: (value) {
@@ -401,7 +406,7 @@ class _UniversalSearchScreenState extends State<UniversalSearchScreen> {
         },
         onSubcategoryChanged: (value) => setState(() => selectedSubcategoryId = value),
         onCityChanged: (value) => setState(() => selectedCityId = value),
-        onPriceChanged: (newMaxPrice) => setState(() { // ТОЛЬКО один параметр
+        onPriceChanged: (newMaxPrice) => setState(() {
           maxPrice = newMaxPrice;
         }),
         onRatingChanged: (value) => setState(() => selectedRating = value),
@@ -414,51 +419,110 @@ class _UniversalSearchScreenState extends State<UniversalSearchScreen> {
     );
   }
 
+  // Виджет для отображения результатов поиска с универсальными карточками
+  Widget _buildSearchResults() {
+    return Column(
+      children: [
+        // Заголовок с количеством результатов
+        if (totalResults > 0)
+          Container(
+            padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
+            width: double.infinity,
+            child: Text(
+              'Найдено: $totalResults ${widget.type == SearchType.SERVICES ? 'услуг' : 'объявлений'}',
+              style: TextStyle(
+                fontSize: 14,
+                color: Colors.grey[600],
+                fontWeight: FontWeight.w500,
+              ),
+            ),
+          ),
+
+        // Список карточек
+        Expanded(
+          child: ListView.separated(
+            padding: const EdgeInsets.all(16),
+            itemCount: searchResults.length + (hasMoreData ? 1 : 0),
+            separatorBuilder: (context, index) => const SizedBox(height: 12),
+            itemBuilder: (context, index) {
+              if (index == searchResults.length) {
+                // Загрузка дополнительных элементов
+                if (hasMoreData && !isLoadingMore) {
+                  WidgetsBinding.instance.addPostFrameCallback((_) {
+                    _loadMoreItems();
+                  });
+                }
+                return isLoadingMore
+                    ? const Padding(
+                  padding: EdgeInsets.all(16),
+                  child: Center(
+                    child: CircularProgressIndicator(color: Color(0xFF2E7D5F)),
+                  ),
+                )
+                    : const SizedBox.shrink();
+              }
+
+              final item = searchResults[index];
+              return UniversalItemCard(
+                item: item,
+                type: widget.type == SearchType.SERVICES
+                    ? ItemType.SERVICE
+                    : ItemType.JOB,
+                onFavoriteChanged: _toggleFavorite,
+              );
+            },
+          ),
+        ),
+      ],
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      resizeToAvoidBottomInset: false,
       appBar: AppBar(
         title: Text(_screenTitle),
       ),
       body: SafeArea(
-        child: Column(
-          children: [
-            SearchHeader(
-              controller: _searchController,
-              focusNode: _focusNode,
-              hasActiveFilters: _hasActiveFilters(),
-              hintText: _searchHint,
-              onSearch: (value) => _performSearch(query: value, resetPage: true),
-              onFilterTap: _showFilters,
-              onBack: () => Navigator.pop(context),
-              showBackButton: true,
+        child: SingleChildScrollView( // Добавь этот wrapper
+          child: SizedBox(
+            height: MediaQuery.of(context).size.height -
+                MediaQuery.of(context).padding.top -
+                kToolbarHeight,
+            child: Column(
+              children: [
+                SearchHeader(
+                  controller: _searchController,
+                  focusNode: _focusNode,
+                  hasActiveFilters: _hasActiveFilters(),
+                  hintText: _searchHint,
+                  onSearch: (value) => _performSearch(query: value, resetPage: true),
+                  onFilterTap: _showFilters,
+                  onBack: () => Navigator.pop(context),
+                  showBackButton: true,
+                ),
+                Expanded(
+                  child: !hasSearched
+                      ? RecentSearches(
+                    searches: recentSearches,
+                    onSearchTap: (search) {
+                      _searchController.text = search;
+                      _performSearch(query: search, resetPage: true);
+                    },
+                    onRemoveSearch: _removeRecentSearch,
+                    onClearAll: _clearAllRecentSearches,
+                  )
+                      : isLoading
+                      ? const Center(child: CircularProgressIndicator(color: Color(0xFF2E7D5F)))
+                      : searchResults.isEmpty
+                      ? NoResults(onRetry: _resetToInitialState)
+                      : _buildSearchResults(),
+                ),
+              ],
             ),
-            Expanded(
-              child: !hasSearched
-                  ? RecentSearches(
-                searches: recentSearches,
-                onSearchTap: (search) {
-                  _searchController.text = search;
-                  _performSearch(query: search, resetPage: true);
-                },
-                onRemoveSearch: _removeRecentSearch,
-                onClearAll: _clearAllRecentSearches,
-              )
-                  : isLoading
-                  ? const Center(child: CircularProgressIndicator(color: Color(0xFF2E7D5F)))
-                  : searchResults.isEmpty
-                  ? NoResults(onRetry: _resetToInitialState)
-                  : SearchResults(
-                results: searchResults,
-                totalResults: totalResults,
-                isLoadingMore: isLoadingMore,
-                favoriteServices: favoriteItems,
-                onFavoriteTap: _toggleFavorite,
-                onLoadMore: _loadMoreItems,
-              ),
-            ),
-          ],
-        ),
+          ),
+        )
       ),
     );
   }

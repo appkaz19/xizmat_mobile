@@ -7,24 +7,22 @@ import '../../utils/app_theme.dart';
 import '../../utils/favorites_utils.dart';
 import '../../widgets/service_media_carousel.dart';
 import '../../widgets/media_grid_preview.dart';
-import '../../widgets/reviews_section.dart';
 import '../../widgets/full_gallery_modal.dart';
 
-class ServiceDetailScreen extends StatefulWidget {
-  final String serviceId;
+class JobDetailScreen extends StatefulWidget {
+  final String jobId;
 
-  const ServiceDetailScreen({
+  const JobDetailScreen({
     super.key,
-    required this.serviceId,
+    required this.jobId,
   });
 
   @override
-  State<ServiceDetailScreen> createState() => _ServiceDetailScreenState();
+  State<JobDetailScreen> createState() => _JobDetailScreenState();
 }
 
-class _ServiceDetailScreenState extends State<ServiceDetailScreen> {
-  Map<String, dynamic>? serviceData;
-  List<Map<String, dynamic>> reviews = [];
+class _JobDetailScreenState extends State<JobDetailScreen> {
+  Map<String, dynamic>? jobData;
   bool isLoading = true;
   bool showFullDescription = false;
   bool isContactUnlocked = false;
@@ -34,8 +32,7 @@ class _ServiceDetailScreenState extends State<ServiceDetailScreen> {
   void initState() {
     super.initState();
     _initializeFavorites();
-    _loadServiceData();
-    _loadReviews();
+    _loadJobData();
     _checkContactStatus();
   }
 
@@ -46,33 +43,23 @@ class _ServiceDetailScreenState extends State<ServiceDetailScreen> {
     }
   }
 
-  Future<void> _loadServiceData() async {
+  Future<void> _loadJobData() async {
     setState(() => isLoading = true);
 
     try {
-      final data = await ApiService.service.getServiceById(widget.serviceId);
+      final data = await ApiService.job.getJobById(widget.jobId);
       setState(() {
-        serviceData = data;
+        jobData = data;
         isLoading = false;
+        // Check if contact is already unlocked from API response
         isContactUnlocked = data?['contactUnlocked'] == true;
         if (isContactUnlocked) {
           contactInfo = data?['contact'];
         }
       });
     } catch (e) {
-      print('Ошибка загрузки сервиса: $e');
+      print('Ошибка загрузки объявления: $e');
       setState(() => isLoading = false);
-    }
-  }
-
-  Future<void> _loadReviews() async {
-    try {
-      final reviewsData = await ApiService.reviews.getReviews(widget.serviceId);
-      setState(() {
-        reviews = reviewsData;
-      });
-    } catch (e) {
-      print('Ошибка загрузки отзывов: $e');
     }
   }
 
@@ -80,16 +67,16 @@ class _ServiceDetailScreenState extends State<ServiceDetailScreen> {
     try {
       final purchasedContacts = await ApiService.purchased.getMyPurchasedContacts();
       final hasPurchased = purchasedContacts.any((contact) =>
-      contact['serviceId'] == widget.serviceId
+      contact['jobId'] == widget.jobId
       );
 
       if (hasPurchased) {
         setState(() {
           isContactUnlocked = true;
           final purchasedContact = purchasedContacts.firstWhere(
-                  (contact) => contact['serviceId'] == widget.serviceId
+                  (contact) => contact['jobId'] == widget.jobId
           );
-          contactInfo = purchasedContact['service']?['user'];
+          contactInfo = purchasedContact['job']?['user'];
         });
       }
     } catch (e) {
@@ -107,14 +94,14 @@ class _ServiceDetailScreenState extends State<ServiceDetailScreen> {
         ),
       );
 
-      final result = await ApiService.purchased.buyServiceContact(widget.serviceId);
+      final result = await ApiService.job.buyEmployerContact(widget.jobId);
 
       Navigator.of(context).pop();
 
       if (result != null) {
         setState(() {
           isContactUnlocked = true;
-          contactInfo = result['user'];
+          contactInfo = result['contact'];
         });
 
         ScaffoldMessenger.of(context).showSnackBar(
@@ -164,31 +151,19 @@ class _ServiceDetailScreenState extends State<ServiceDetailScreen> {
     );
   }
 
-  String _getCategoryName() {
-    if (serviceData?['category']?['CategoryTranslation'] == null) return '';
-    final translations = serviceData!['category']['CategoryTranslation'] as List;
-    final ruTranslation = translations.firstWhere(
-          (t) => t['language'] == 'ru',
-      orElse: () => translations.isNotEmpty ? translations.first : null,
-    );
-    return ruTranslation?['name'] ?? '';
+  String _getCityName() {
+    if (jobData?['city'] == null) return 'Город не указан';
+    return jobData!['city']['name'] ?? 'Город не указан';
   }
 
-  double _getAverageRating() {
-    if (reviews.isEmpty) return 0.0;
-    final sum = reviews.fold<double>(0.0, (sum, review) => sum + (review['rating'] ?? 0));
-    return sum / reviews.length;
+  String _getRegionName() {
+    if (jobData?['region'] == null) return '';
+    return jobData!['region']['name'] ?? '';
   }
 
   List<String> _getAllImages() {
-    final images = serviceData?['images'] as List<dynamic>? ?? [];
+    final images = jobData?['images'] as List<dynamic>? ?? [];
     return images.map((image) => image.toString()).toList();
-  }
-
-  String _getReviewEnding(int count) {
-    if (count == 1) return '';
-    if (count > 1 && count < 5) return 'а';
-    return 'ов';
   }
 
   @override
@@ -202,22 +177,22 @@ class _ServiceDetailScreenState extends State<ServiceDetailScreen> {
       );
     }
 
-    if (serviceData == null) {
+    if (jobData == null) {
       return Scaffold(
         appBar: AppBar(),
         body: const Center(
-          child: Text('Сервис не найден'),
+          child: Text('Объявление не найдено'),
         ),
       );
     }
 
     final allImages = _getAllImages();
-    final user = serviceData!['user'] as Map<String, dynamic>? ?? {};
-    final providerName = user['fullName'] ?? 'Неизвестно';
-    final title = serviceData!['title'] ?? 'Без названия';
-    final description = serviceData!['description'] ?? '';
-    final price = serviceData!['price']?.toString() ?? '0';
-    final address = serviceData!['address'] ?? 'Адрес не указан';
+    final user = jobData!['user'] as Map<String, dynamic>? ?? {};
+    final employerName = user['fullName'] ?? 'Неизвестно';
+    final title = jobData!['title'] ?? 'Без названия';
+    final description = jobData!['description'] ?? '';
+    final price = jobData!['price']?.toString() ?? '0';
+    final address = jobData!['address'] ?? 'Адрес не указан';
 
     return Scaffold(
       body: CustomScrollView(
@@ -234,10 +209,10 @@ class _ServiceDetailScreenState extends State<ServiceDetailScreen> {
             actions: [
               Consumer<FavoritesProvider>(
                 builder: (context, favoritesProvider, child) {
-                  final isFavorite = favoritesProvider.isServiceFavorite(widget.serviceId);
+                  final isFavorite = favoritesProvider.isJobFavorite(widget.jobId);
                   return IconButton(
                     onPressed: () async {
-                      await favoritesProvider.toggleServiceFavorite(widget.serviceId);
+                      await favoritesProvider.toggleJobFavorite(widget.jobId);
                     },
                     icon: Icon(
                       Icons.star,
@@ -250,14 +225,14 @@ class _ServiceDetailScreenState extends State<ServiceDetailScreen> {
             ],
           ),
 
-          // Service Details Content
+          // Job Details Content
           SliverToBoxAdapter(
             child: Padding(
               padding: const EdgeInsets.all(16),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  // Service Title
+                  // Job Title
                   Text(
                     title,
                     style: const TextStyle(
@@ -269,32 +244,15 @@ class _ServiceDetailScreenState extends State<ServiceDetailScreen> {
 
                   const SizedBox(height: 12),
 
-                  // Provider Info
+                  // Employer Info
                   Row(
                     children: [
                       Text(
-                        providerName,
+                        employerName,
                         style: const TextStyle(
                           fontSize: 18,
                           fontWeight: FontWeight.w600,
                           color: AppColors.primary,
-                        ),
-                      ),
-                      const SizedBox(width: 12),
-                      const Icon(Icons.star, color: Colors.amber, size: 20),
-                      Text(
-                        _getAverageRating().toStringAsFixed(1),
-                        style: const TextStyle(
-                          fontWeight: FontWeight.w600,
-                          fontSize: 16,
-                        ),
-                      ),
-                      const SizedBox(width: 6),
-                      Text(
-                        '(${reviews.length} отзыв${_getReviewEnding(reviews.length)})',
-                        style: const TextStyle(
-                          color: AppColors.textSecondary,
-                          fontSize: 14,
                         ),
                       ),
                     ],
@@ -302,31 +260,14 @@ class _ServiceDetailScreenState extends State<ServiceDetailScreen> {
 
                   const SizedBox(height: 16),
 
-                  // Category and Address
+                  // Location
                   Row(
                     children: [
-                      Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                        decoration: BoxDecoration(
-                          color: AppColors.primary.withOpacity(0.1),
-                          borderRadius: BorderRadius.circular(20),
-                          border: Border.all(color: AppColors.primary.withOpacity(0.3)),
-                        ),
-                        child: Text(
-                          _getCategoryName(),
-                          style: const TextStyle(
-                            fontSize: 14,
-                            fontWeight: FontWeight.w600,
-                            color: AppColors.primary,
-                          ),
-                        ),
-                      ),
-                      const SizedBox(width: 16),
                       const Icon(Icons.location_on, size: 18, color: AppColors.textSecondary),
                       const SizedBox(width: 4),
                       Expanded(
                         child: Text(
-                          address,
+                          '${_getCityName()}, ${_getRegionName()}\n$address',
                           style: const TextStyle(
                             fontSize: 14,
                             color: AppColors.textSecondary,
@@ -340,7 +281,7 @@ class _ServiceDetailScreenState extends State<ServiceDetailScreen> {
 
                   // Price
                   Text(
-                    '${_formatPrice(price)} тенге',
+                    'до ${_formatPrice(price)} тенге',
                     style: const TextStyle(
                       fontSize: 24,
                       fontWeight: FontWeight.bold,
@@ -352,7 +293,7 @@ class _ServiceDetailScreenState extends State<ServiceDetailScreen> {
 
                   // About Section
                   const Text(
-                    'О сервисе',
+                    'Описание работы',
                     style: TextStyle(
                       fontSize: 22,
                       fontWeight: FontWeight.bold,
@@ -399,13 +340,6 @@ class _ServiceDetailScreenState extends State<ServiceDetailScreen> {
 
                     const SizedBox(height: 32),
                   ],
-
-                  // Reviews Section
-                  ReviewsSection(
-                    reviews: reviews,
-                    serviceId: widget.serviceId,
-                    onReviewAdded: _loadReviews,
-                  ),
 
                   const SizedBox(height: 100),
                 ],
@@ -469,8 +403,8 @@ class _ServiceDetailScreenState extends State<ServiceDetailScreen> {
       decoration: BoxDecoration(
         gradient: LinearGradient(
           colors: [
-            Colors.purple.withOpacity(0.8),
-            Colors.blue.withOpacity(0.8),
+            Colors.orange.withOpacity(0.8),
+            Colors.red.withOpacity(0.8),
           ],
         ),
       ),
@@ -479,7 +413,7 @@ class _ServiceDetailScreenState extends State<ServiceDetailScreen> {
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
             Icon(
-              Icons.camera_alt,
+              Icons.work_outline,
               size: 60,
               color: Colors.white,
             ),
@@ -538,8 +472,10 @@ class _ServiceDetailScreenState extends State<ServiceDetailScreen> {
   }
 
   Widget _buildContactButtons() {
-    final phone = contactInfo?['phone'] ?? '';
-    final fullName = contactInfo?['fullName'] ?? 'Исполнитель';
+    // Берем данные из основного объекта, а не из contactInfo
+    final user = jobData!['user'] as Map<String, dynamic>? ?? {};
+    final phone = contactInfo?['phone'] ?? user['phone'] ?? '';
+    final fullName = contactInfo?['fullName'] ?? user['fullName'] ?? 'Неизвестно';
 
     return Column(
       mainAxisSize: MainAxisSize.min,
@@ -574,6 +510,7 @@ class _ServiceDetailScreenState extends State<ServiceDetailScreen> {
                   ),
                 ),
               ],
+              // Убрали отображение email
             ],
           ),
         ),

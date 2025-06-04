@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import '../../widgets/search_bar_widget.dart';
 import '../search/universal_search_screen.dart';
 import '../services/add_service_screen.dart';
+import '../jobs/add_job_screen.dart'; // Добавили импорт
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -91,12 +92,14 @@ class _HomeScreenState extends State<HomeScreen> {
                   _buildQuickActionCard(
                     'Найти специалиста',
                     Icons.search,
+                    Colors.blue,
                         () {
                       Navigator.push(
                         context,
                         MaterialPageRoute(
                           builder: (context) => const UniversalSearchScreen(
-                              type: SearchType.SERVICES
+                            type: SearchType.SERVICES,
+                            title: 'Поиск специалистов',
                           ),
                         ),
                       );
@@ -105,6 +108,7 @@ class _HomeScreenState extends State<HomeScreen> {
                   _buildQuickActionCard(
                     'Добавить услугу',
                     Icons.add_box,
+                    Colors.green,
                         () {
                       Navigator.push(
                         context,
@@ -116,16 +120,31 @@ class _HomeScreenState extends State<HomeScreen> {
                   ),
                   _buildQuickActionCard(
                     'Доска объявлений',
-                    Icons.view_list,
+                    Icons.work_outline,
+                    Colors.orange,
                         () {
-                      // Navigate to announcements
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (context) => const UniversalSearchScreen(
+                            type: SearchType.JOBS,
+                            title: 'Доска объявлений',
+                          ),
+                        ),
+                      );
                     },
                   ),
                   _buildQuickActionCard(
                     'Создать объявление',
                     Icons.edit_note,
+                    Colors.red,
                         () {
-                      // Navigate to create announcement
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (context) => const AddJobScreen(),
+                        ),
+                      );
                     },
                   ),
                 ],
@@ -258,22 +277,31 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-  Widget _buildQuickActionCard(String title, IconData icon, VoidCallback onTap) {
+  Widget _buildQuickActionCard(
+      String title,
+      IconData icon,
+      Color color,
+      VoidCallback onTap,
+      ) {
     return InkWell(
       onTap: onTap,
       borderRadius: BorderRadius.circular(16),
       child: Container(
         decoration: BoxDecoration(
-          color: Colors.grey[200],
+          color: Colors.grey[100],
           borderRadius: BorderRadius.circular(16),
+          border: Border.all(
+            color: color.withOpacity(0.2),
+            width: 1,
+          ),
         ),
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
             Container(
               padding: const EdgeInsets.all(12),
-              decoration: const BoxDecoration(
-                color: Color(0xFF2E7D5F),
+              decoration: BoxDecoration(
+                color: color,
                 shape: BoxShape.circle,
               ),
               child: Icon(

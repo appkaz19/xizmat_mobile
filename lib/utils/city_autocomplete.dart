@@ -29,7 +29,7 @@ class CityAutocomplete extends StatelessWidget {
         if (selectedCityId != null && controller.text.isEmpty) {
           final selectedCity = cities.firstWhere(
                 (city) => city['id'] == selectedCityId,
-            orElse: () => {},
+            orElse: () => <String, dynamic>{}, // ← ИСПРАВЛЕНО: явно указали тип
           );
           if (selectedCity.isNotEmpty) {
             controller.text = '${selectedCity['name']} (${selectedCity['region']})';
