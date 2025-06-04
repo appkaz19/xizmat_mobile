@@ -6,7 +6,7 @@ import '../../services/api/service.dart';
 import '../../widgets/search_header.dart';
 import '../../widgets/recent_searches.dart';
 import '../../widgets/no_results.dart';
-import '../../widgets/universal_filter_bottom_sheet.dart';
+import '../../widgets/filters/universal_filter_bottom_sheet.dart';
 import 'universal_item_card.dart'; // Добавили импорт
 
 enum SearchType { SERVICES, JOBS }
