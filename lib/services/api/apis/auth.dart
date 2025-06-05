@@ -108,6 +108,7 @@ class AuthApi {
 
   Future<bool> resetPassword({
     required String phone,
+    required String otp,
     required String newPassword,
   }) async {
     final res = await CoreApi.sendRequest(
@@ -115,7 +116,7 @@ class AuthApi {
       method: 'POST',
       body: {
         'phone': phone,
-        'otp': '0000', // фиксированный OTP
+        'otp': otp,
         'newPassword': newPassword,
       },
     );

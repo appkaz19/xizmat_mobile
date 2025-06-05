@@ -276,6 +276,7 @@ class _OtpVerificationScreenState extends State<OtpVerificationScreen> {
             MaterialPageRoute(
               builder: (context) => CreateNewPasswordScreen(
                 phone: widget.phone,
+                otp: otp,
               ),
             ),
           );
