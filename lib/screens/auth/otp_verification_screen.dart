@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'dart:async';
 import '../../services/api/service.dart';
+import '../../services/api/apis/auth.dart'; // Для OtpVerificationResult
 import 'create_new_password_screen.dart';
 import '../main/main_navigation.dart';
 
@@ -268,30 +269,16 @@ class _OtpVerificationScreenState extends State<OtpVerificationScreen> {
       bool success = false;
 
       if (widget.isPasswordReset) {
-        success = await ApiService.auth.verifyResetOtp(widget.phone, otp);
-        if (success) {
-          if (!mounted) return;
+        final result = await ApiService.auth.verifyResetOtp(widget.phone, otp);
+        if (result.success) {
           Navigator.pushReplacement(
             context,
             MaterialPageRoute(
-              builder: (context) => CreateNewPasswordScreen(
-                phone: widget.phone,
-                otp: otp,
-              ),
+              builder: (context) => const CreateNewPasswordScreen(), // БЕЗ параметров!
             ),
           );
-        }
-      } else {
-        success = await ApiService.auth.verifyOtp(widget.phone, otp);
-        if (success) {
-          if (!mounted) return;
-          Navigator.pushAndRemoveUntil(
-            context,
-            MaterialPageRoute(
-              builder: (context) => const MainNavigation(),
-            ),
-                (route) => false,
-          );
+        } else {
+          _showErrorDialog(result.message ?? 'Неверный код. Попробуйте еще раз.');
         }
       }
 
