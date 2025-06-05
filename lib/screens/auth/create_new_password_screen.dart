@@ -4,10 +4,12 @@ import 'password_success_screen.dart';
 
 class CreateNewPasswordScreen extends StatefulWidget {
   final String? phone;
+  final String otp;
 
   const CreateNewPasswordScreen({
     super.key,
     this.phone,
+    required this.otp,
   });
 
   @override
@@ -305,6 +307,7 @@ class _CreateNewPasswordScreenState extends State<CreateNewPasswordScreen> {
     try {
       final success = await ApiService.auth.resetPassword(
         phone: widget.phone ?? '0000', // Fallback для обратной совместимости
+        otp: widget.otp,
         newPassword: _passwordController.text,
       );
 
