@@ -1,32 +1,16 @@
-import "package:flutter/material.dart";
-import "../../utils/city_autocomplete.dart";
+import 'package:flutter/material.dart';
 
-// Остальные виджеты остаются без изменений...
-class FilterHeader extends StatelessWidget {
-  final VoidCallback onClose;
+// ДОБАВЛЯЕМ отсутствующий компонент FilterSectionTitle
+class FilterSectionTitle extends StatelessWidget {
+  final String title;
 
-  const FilterHeader({super.key, required this.onClose});
+  const FilterSectionTitle(this.title, {super.key});
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        border: Border(bottom: BorderSide(color: Colors.grey[200]!)),
-      ),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-        children: [
-          const Text(
-            'Фильтр',
-            style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
-          ),
-          IconButton(
-            icon: const Icon(Icons.close),
-            onPressed: onClose,
-          ),
-        ],
-      ),
+    return Text(
+      title,
+      style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
     );
   }
 }
@@ -37,6 +21,7 @@ class ServicesFilterSection extends StatelessWidget {
   final String? selectedCategoryId;
   final String? selectedSubcategoryId;
   final bool allowCategoryChange;
+  final bool allowSubcategoryChange; // ДОБАВИЛИ: новый параметр
   final Function(String?) onCategoryChanged;
   final Function(String?) onSubcategoryChanged;
 
@@ -47,6 +32,7 @@ class ServicesFilterSection extends StatelessWidget {
     required this.selectedCategoryId,
     required this.selectedSubcategoryId,
     required this.allowCategoryChange,
+    this.allowSubcategoryChange = true, // ДОБАВИЛИ: дефолтное значение
     required this.onCategoryChanged,
     required this.onSubcategoryChanged,
   });
@@ -56,24 +42,107 @@ class ServicesFilterSection extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        const FilterSectionTitle('Услуги'),
-        const SizedBox(height: 12),
-
-        if (allowCategoryChange)
-          CategoryDropdown(
-            categories: categories,
-            selectedCategoryId: selectedCategoryId,
+        // Категория
+        if (allowCategoryChange) ...[
+          const Text(
+            'Категория',
+            style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
+          ),
+          const SizedBox(height: 8),
+          DropdownButtonFormField<String>(
+            value: selectedCategoryId,
+            decoration: const InputDecoration(
+              border: OutlineInputBorder(),
+              hintText: 'Выберите категорию',
+            ),
+            items: [
+              const DropdownMenuItem<String>(
+                value: null,
+                child: Text('Все категории'),
+              ),
+              ...categories.map((category) => DropdownMenuItem<String>(
+                value: category['id'],
+                child: Text(category['name'] ?? ''),
+              )),
+            ],
             onChanged: onCategoryChanged,
           ),
-
-        if (allowCategoryChange) const SizedBox(height: 12),
-
-        if (subcategories.isNotEmpty)
-          SubcategoryDropdown(
-            subcategories: subcategories,
-            selectedSubcategoryId: selectedSubcategoryId,
-            onChanged: onSubcategoryChanged,
+          const SizedBox(height: 16),
+        ] else if (selectedCategoryId != null) ...[
+          // Показываем выбранную категорию как неизменяемое поле
+          const Text(
+            'Категория',
+            style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
           ),
+          const SizedBox(height: 8),
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              border: Border.all(color: Colors.grey[300]!),
+              borderRadius: BorderRadius.circular(4),
+              color: Colors.grey[50],
+            ),
+            child: Text(
+              categories.firstWhere(
+                    (cat) => cat['id'] == selectedCategoryId,
+                orElse: () => {'name': 'Неизвестная категория'},
+              )['name'] ?? 'Неизвестная категория',
+              style: TextStyle(color: Colors.grey[600]),
+            ),
+          ),
+          const SizedBox(height: 16),
+        ],
+
+        // Подкатегория
+        if (allowSubcategoryChange) ...[
+          const Text(
+            'Подкатегория',
+            style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
+          ),
+          const SizedBox(height: 8),
+          DropdownButtonFormField<String>(
+            value: selectedSubcategoryId,
+            decoration: const InputDecoration(
+              border: OutlineInputBorder(),
+              hintText: 'Выберите подкатегорию',
+            ),
+            items: [
+              const DropdownMenuItem<String>(
+                value: null,
+                child: Text('Все подкатегории'),
+              ),
+              ...subcategories.map((subcategory) => DropdownMenuItem<String>(
+                value: subcategory['id'],
+                child: Text(subcategory['name'] ?? ''),
+              )),
+            ],
+            onChanged: subcategories.isNotEmpty ? onSubcategoryChanged : null,
+          ),
+        ] else if (selectedSubcategoryId != null) ...[
+          // ДОБАВИЛИ: показываем выбранную подкатегорию как неизменяемое поле
+          const Text(
+            'Подкатегория',
+            style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
+          ),
+          const SizedBox(height: 8),
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              border: Border.all(color: Colors.grey[300]!),
+              borderRadius: BorderRadius.circular(4),
+              color: Colors.grey[50],
+            ),
+            child: Text(
+              subcategories.firstWhere(
+                    (subcat) => subcat['id'] == selectedSubcategoryId,
+                orElse: () => {'name': 'Неизвестная подкатегория'},
+              )['name'] ?? 'Неизвестная подкатегория',
+              style: TextStyle(color: Colors.grey[600]),
+            ),
+          ),
+        ],
       ],
     );
   }
@@ -96,12 +165,28 @@ class LocationFilterSection extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        const FilterSectionTitle('Местоположение'),
-        const SizedBox(height: 12),
-        CityAutocomplete(
-          cities: cities,
-          selectedCityId: selectedCityId,
-          onCityChanged: onCityChanged,
+        const Text(
+          'Город',
+          style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
+        ),
+        const SizedBox(height: 8),
+        DropdownButtonFormField<String>(
+          value: selectedCityId,
+          decoration: const InputDecoration(
+            border: OutlineInputBorder(),
+            hintText: 'Выберите город',
+          ),
+          items: [
+            const DropdownMenuItem<String>(
+              value: null,
+              child: Text('Все города'),
+            ),
+            ...cities.map((city) => DropdownMenuItem<String>(
+              value: city['id']?.toString(),
+              child: Text(city['name']?.toString() ?? ''),
+            )),
+          ],
+          onChanged: onCityChanged,
         ),
       ],
     );
@@ -123,167 +208,34 @@ class RatingFilterSection extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        const FilterSectionTitle('Рейтинг'),
-        const SizedBox(height: 12),
-        RatingChips(
-          selectedRating: selectedRating,
-          onRatingChanged: onRatingChanged,
+        const Text(
+          'Минимальный рейтинг',
+          style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
+        ),
+        const SizedBox(height: 8),
+        Wrap(
+          spacing: 8,
+          children: [
+            for (int i = 1; i <= 5; i++)
+              FilterChip(
+                label: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const Icon(Icons.star, size: 16, color: Colors.amber),
+                    const SizedBox(width: 4),
+                    Text('$i+'),
+                  ],
+                ),
+                selected: selectedRating == i,
+                onSelected: (selected) {
+                  onRatingChanged(selected ? i : null);
+                },
+                selectedColor: const Color(0xFF2E7D5F).withOpacity(0.2),
+                checkmarkColor: const Color(0xFF2E7D5F),
+              ),
+          ],
         ),
       ],
-    );
-  }
-}
-
-class FilterSectionTitle extends StatelessWidget {
-  final String title;
-  const FilterSectionTitle(this.title, {super.key});
-
-  @override
-  Widget build(BuildContext context) {
-    return Text(title, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold));
-  }
-}
-
-class CategoryDropdown extends StatelessWidget {
-  final List<Map<String, String>> categories;
-  final String? selectedCategoryId;
-  final Function(String?) onChanged;
-
-  const CategoryDropdown({
-    super.key,
-    required this.categories,
-    required this.selectedCategoryId,
-    required this.onChanged,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return DropdownButtonFormField<String>(
-      value: selectedCategoryId,
-      decoration: const InputDecoration(
-        labelText: 'Категория',
-        border: OutlineInputBorder(),
-      ),
-      items: [
-        const DropdownMenuItem<String>(value: null, child: Text('Все категории')),
-        ...categories.map((category) => DropdownMenuItem<String>(
-          value: category['id'],
-          child: Text(category['name'] ?? ''),
-        )),
-      ],
-      onChanged: onChanged,
-    );
-  }
-}
-
-class SubcategoryDropdown extends StatelessWidget {
-  final List<Map<String, String>> subcategories;
-  final String? selectedSubcategoryId;
-  final Function(String?) onChanged;
-
-  const SubcategoryDropdown({
-    super.key,
-    required this.subcategories,
-    required this.selectedSubcategoryId,
-    required this.onChanged,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return DropdownButtonFormField<String>(
-      value: selectedSubcategoryId,
-      decoration: const InputDecoration(
-        labelText: 'Подкатегория',
-        border: OutlineInputBorder(),
-      ),
-      items: [
-        const DropdownMenuItem<String>(value: null, child: Text('Все подкатегории')),
-        ...subcategories.map((subcategory) => DropdownMenuItem<String>(
-          value: subcategory['id'],
-          child: Text(subcategory['name'] ?? ''),
-        )),
-      ],
-      onChanged: onChanged,
-    );
-  }
-}
-
-class RatingChips extends StatelessWidget {
-  final int? selectedRating;
-  final Function(int?) onRatingChanged;
-
-  const RatingChips({
-    super.key,
-    required this.selectedRating,
-    required this.onRatingChanged,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Wrap(
-      spacing: 8,
-      children: [
-        _buildRatingChip('Все', null),
-        _buildRatingChip('5★', 5),
-        _buildRatingChip('4★', 4),
-        _buildRatingChip('3★', 3),
-      ],
-    );
-  }
-
-  Widget _buildRatingChip(String label, int? rating) {
-    final isSelected = selectedRating == rating;
-    return FilterChip(
-      label: Text(label),
-      selected: isSelected,
-      onSelected: (selected) {
-        final newRating = selected ? rating : null;
-        onRatingChanged(newRating);
-      },
-      selectedColor: const Color(0xFF2E7D5F).withOpacity(0.2),
-      checkmarkColor: const Color(0xFF2E7D5F),
-    );
-  }
-}
-
-class FilterBottomButtons extends StatelessWidget {
-  final VoidCallback onReset;
-  final VoidCallback onApply;
-
-  const FilterBottomButtons({
-    super.key,
-    required this.onReset,
-    required this.onApply,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        border: Border(top: BorderSide(color: Colors.grey[200]!)),
-      ),
-      child: Row(
-        children: [
-          Expanded(
-            child: OutlinedButton(
-              onPressed: onReset,
-              child: const Text('Сбросить'),
-            ),
-          ),
-          const SizedBox(width: 16),
-          Expanded(
-            child: ElevatedButton(
-              onPressed: onApply,
-              style: ElevatedButton.styleFrom(
-                backgroundColor: const Color(0xFF2E7D5F),
-                foregroundColor: Colors.white,
-              ),
-              child: const Text('Применить'),
-            ),
-          ),
-        ],
-      ),
     );
   }
 }

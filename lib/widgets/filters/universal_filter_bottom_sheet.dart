@@ -3,6 +3,7 @@ import "../../services/api/service.dart";
 import "../../screens/search/universal_search_screen.dart";
 import "price_filter_section.dart";
 import "filter_sections.dart";
+
 class UniversalFilterBottomSheet extends StatefulWidget {
   final SearchType type;
   final List<Map<String, String>> categories;
@@ -11,13 +12,14 @@ class UniversalFilterBottomSheet extends StatefulWidget {
   final String? selectedCategoryId;
   final String? selectedSubcategoryId;
   final String? selectedCityId;
-  final int maxPrice; // Изменили на int
+  final int maxPrice;
   final int? selectedRating;
   final bool allowCategoryChange;
+  final bool allowSubcategoryChange; // ДОБАВИЛИ: новый параметр
   final Function(String?) onCategoryChanged;
   final Function(String?) onSubcategoryChanged;
   final Function(String?) onCityChanged;
-  final Function(int) onPriceChanged; // Изменили сигнатуру
+  final Function(int) onPriceChanged;
   final Function(int?) onRatingChanged;
   final VoidCallback onReset;
   final VoidCallback onApply;
@@ -34,6 +36,7 @@ class UniversalFilterBottomSheet extends StatefulWidget {
     required this.maxPrice,
     required this.selectedRating,
     required this.allowCategoryChange,
+    this.allowSubcategoryChange = true, // ДОБАВИЛИ: дефолтное значение
     required this.onCategoryChanged,
     required this.onSubcategoryChanged,
     required this.onCityChanged,
@@ -75,7 +78,7 @@ class _UniversalFilterBottomSheetState extends State<UniversalFilterBottomSheet>
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      resizeToAvoidBottomInset: true, // Поднимает виджет при клавиатуре
+      resizeToAvoidBottomInset: true,
       backgroundColor: Colors.transparent,
       body: Container(
         height: MediaQuery.of(context).size.height * 0.8,
@@ -100,6 +103,7 @@ class _UniversalFilterBottomSheetState extends State<UniversalFilterBottomSheet>
                   maxPrice: _maxPrice,
                   selectedRating: _selectedRating,
                   allowCategoryChange: widget.allowCategoryChange,
+                  allowSubcategoryChange: widget.allowSubcategoryChange, // ДОБАВИЛИ: передаем параметр
                   onCategoryChanged: _onCategoryChanged,
                   onSubcategoryChanged: _onSubcategoryChanged,
                   onCityChanged: _onCityChanged,
@@ -121,7 +125,10 @@ class _UniversalFilterBottomSheetState extends State<UniversalFilterBottomSheet>
   void _onCategoryChanged(String? value) {
     setState(() {
       _selectedCategoryId = value;
-      _selectedSubcategoryId = null;
+      // ИЗМЕНИЛИ: не сбрасываем подкатегорию если она зафиксирована
+      if (widget.allowSubcategoryChange) {
+        _selectedSubcategoryId = null;
+      }
       _localSubcategories.clear();
     });
     widget.onCategoryChanged(value);
@@ -129,8 +136,11 @@ class _UniversalFilterBottomSheetState extends State<UniversalFilterBottomSheet>
   }
 
   void _onSubcategoryChanged(String? value) {
-    setState(() => _selectedSubcategoryId = value);
-    widget.onSubcategoryChanged(value);
+    // ДОБАВИЛИ: проверяем разрешение на изменение
+    if (widget.allowSubcategoryChange) {
+      setState(() => _selectedSubcategoryId = value);
+      widget.onSubcategoryChanged(value);
+    }
   }
 
   void _onCityChanged(String? value) {
@@ -155,9 +165,12 @@ class _UniversalFilterBottomSheetState extends State<UniversalFilterBottomSheet>
       if (widget.allowCategoryChange) {
         _selectedCategoryId = null;
       }
-      _selectedSubcategoryId = null;
+      // ИЗМЕНИЛИ: сбрасываем подкатегорию только если разрешено
+      if (widget.allowSubcategoryChange) {
+        _selectedSubcategoryId = null;
+      }
       _selectedCityId = null;
-      _maxPrice = 1000000; // Дефолтная максимальная цена
+      _maxPrice = 1000000;
       _selectedRating = null;
       if (widget.allowCategoryChange) {
         _localSubcategories.clear();
@@ -180,8 +193,6 @@ class _UniversalFilterBottomSheetState extends State<UniversalFilterBottomSheet>
   }
 }
 
-// Остальные виджеты остаются такими же, кроме FilterContent и PriceFilterSection
-
 class FilterContent extends StatelessWidget {
   final SearchType type;
   final String itemTypeName;
@@ -191,13 +202,14 @@ class FilterContent extends StatelessWidget {
   final String? selectedCategoryId;
   final String? selectedSubcategoryId;
   final String? selectedCityId;
-  final int maxPrice; // Изменили тип
+  final int maxPrice;
   final int? selectedRating;
   final bool allowCategoryChange;
+  final bool allowSubcategoryChange; // ДОБАВИЛИ: новый параметр
   final Function(String?) onCategoryChanged;
   final Function(String?) onSubcategoryChanged;
   final Function(String?) onCityChanged;
-  final Function(int) onPriceChanged; // Изменили сигнатуру
+  final Function(int) onPriceChanged;
   final Function(int?) onRatingChanged;
 
   const FilterContent({
@@ -213,6 +225,7 @@ class FilterContent extends StatelessWidget {
     required this.maxPrice,
     required this.selectedRating,
     required this.allowCategoryChange,
+    this.allowSubcategoryChange = true, // ДОБАВИЛИ: дефолтное значение
     required this.onCategoryChanged,
     required this.onSubcategoryChanged,
     required this.onCityChanged,
@@ -235,6 +248,7 @@ class FilterContent extends StatelessWidget {
               selectedCategoryId: selectedCategoryId,
               selectedSubcategoryId: selectedSubcategoryId,
               allowCategoryChange: allowCategoryChange,
+              allowSubcategoryChange: allowSubcategoryChange, // ДОБАВИЛИ: передаем параметр
               onCategoryChanged: onCategoryChanged,
               onSubcategoryChanged: onSubcategoryChanged,
             ),
@@ -267,3 +281,74 @@ class FilterContent extends StatelessWidget {
   }
 }
 
+// Остальные классы остаются без изменений
+class FilterHeader extends StatelessWidget {
+  final VoidCallback onClose;
+
+  const FilterHeader({super.key, required this.onClose});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        border: Border(bottom: BorderSide(color: Colors.grey[300]!)),
+      ),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          const Text(
+            'Фильтры',
+            style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+          ),
+          IconButton(
+            onPressed: onClose,
+            icon: const Icon(Icons.close),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class FilterBottomButtons extends StatelessWidget {
+  final VoidCallback onReset;
+  final VoidCallback onApply;
+
+  const FilterBottomButtons({
+    super.key,
+    required this.onReset,
+    required this.onApply,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        border: Border(top: BorderSide(color: Colors.grey[300]!)),
+      ),
+      child: Row(
+        children: [
+          Expanded(
+            child: OutlinedButton(
+              onPressed: onReset,
+              child: const Text('Сбросить'),
+            ),
+          ),
+          const SizedBox(width: 16),
+          Expanded(
+            child: ElevatedButton(
+              onPressed: onApply,
+              style: ElevatedButton.styleFrom(
+                backgroundColor: const Color(0xFF2E7D5F),
+                foregroundColor: Colors.white,
+              ),
+              child: const Text('Применить'),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}

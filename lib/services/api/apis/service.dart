@@ -80,4 +80,26 @@ class ServiceApi {
 
     return null;
   }
+
+  Future<dynamic> getMyServices({
+    int page = 1,
+    int limit = 20,
+  }) async {
+    final res = await CoreApi.sendRequest(
+      path: '/services/my',
+      method: 'GET',
+      query: {
+        'page': page.toString(),
+        'limit': limit.toString(),
+      },
+      auth: true,
+    );
+
+    if (res.statusCode == 200) {
+      final responseString = await res.transform(utf8.decoder).join();
+      return jsonDecode(responseString);
+    } else {
+      throw Exception('Failed to load my services: ${res.statusCode}');
+    }
+  }
 }

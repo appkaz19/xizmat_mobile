@@ -7,19 +7,21 @@ import '../../widgets/search_header.dart';
 import '../../widgets/recent_searches.dart';
 import '../../widgets/no_results.dart';
 import '../../widgets/filters/universal_filter_bottom_sheet.dart';
-import 'universal_item_card.dart'; // Добавили импорт
+import 'universal_item_card.dart';
 
 enum SearchType { SERVICES, JOBS }
 
 class UniversalSearchScreen extends StatefulWidget {
   final SearchType type;
   final String? fixedCategoryId;
+  final String? fixedSubcategoryId; // ДОБАВИЛИ: поддержка фиксированной подкатегории
   final String? title;
 
   const UniversalSearchScreen({
     super.key,
     required this.type,
     this.fixedCategoryId,
+    this.fixedSubcategoryId, // ДОБАВИЛИ: новый параметр
     this.title,
   });
 
@@ -59,6 +61,7 @@ class _UniversalSearchScreenState extends State<UniversalSearchScreen> {
   void initState() {
     super.initState();
     selectedCategoryId = widget.fixedCategoryId;
+    selectedSubcategoryId = widget.fixedSubcategoryId; // ДОБАВИЛИ: инициализация подкатегории
     _initialize();
   }
 
@@ -245,6 +248,13 @@ class _UniversalSearchScreenState extends State<UniversalSearchScreen> {
     if (selectedCityId != null) queryParams['cityId'] = selectedCityId;
     if (maxPrice > 0 && maxPrice < 1000000) queryParams['price'] = maxPrice.toString();
 
+    // ДОБАВИЛИ: отладка для подкатегорий
+    print('=== SUBCATEGORY DEBUG ===');
+    print('fixedSubcategoryId: ${widget.fixedSubcategoryId}');
+    print('selectedSubcategoryId: $selectedSubcategoryId');
+    print('Final queryParams: $queryParams');
+    print('========================');
+
     return queryParams;
   }
 
@@ -323,7 +333,10 @@ class _UniversalSearchScreenState extends State<UniversalSearchScreen> {
       final subcategoriesData = await ApiService.subcategory.getSubcategoriesByCategory(categoryId);
       setState(() {
         subcategories = subcategoriesData;
-        selectedSubcategoryId = null;
+        // ИЗМЕНИЛИ: не сбрасываем selectedSubcategoryId если она зафиксирована
+        if (widget.fixedSubcategoryId == null) {
+          selectedSubcategoryId = null;
+        }
       });
     } catch (e) {
       print('Ошибка загрузки подкатегорий: $e');
@@ -335,7 +348,10 @@ class _UniversalSearchScreenState extends State<UniversalSearchScreen> {
       if (widget.fixedCategoryId == null) {
         selectedCategoryId = null;
       }
-      selectedSubcategoryId = null;
+      // ИЗМЕНИЛИ: не сбрасываем selectedSubcategoryId если она зафиксирована
+      if (widget.fixedSubcategoryId == null) {
+        selectedSubcategoryId = null;
+      }
       selectedCityId = null;
       maxPrice = 1000000;
       selectedRating = null;
@@ -362,7 +378,7 @@ class _UniversalSearchScreenState extends State<UniversalSearchScreen> {
     if (widget.type == SearchType.SERVICES) {
       hasFilters = hasFilters ||
           (widget.fixedCategoryId == null && selectedCategoryId != null) ||
-          selectedSubcategoryId != null;
+          (widget.fixedSubcategoryId == null && selectedSubcategoryId != null); // ИЗМЕНИЛИ: учитываем фиксированность
     }
 
     return hasFilters;
@@ -394,17 +410,26 @@ class _UniversalSearchScreenState extends State<UniversalSearchScreen> {
         maxPrice: maxPrice,
         selectedRating: selectedRating,
         allowCategoryChange: widget.fixedCategoryId == null,
+        allowSubcategoryChange: widget.fixedSubcategoryId == null, // ДОБАВИЛИ: проверка на фиксированность подкатегории
         onCategoryChanged: (value) {
           if (widget.fixedCategoryId == null) {
             setState(() {
               selectedCategoryId = value;
-              selectedSubcategoryId = null;
+              // ИЗМЕНИЛИ: не сбрасываем selectedSubcategoryId если она зафиксирована
+              if (widget.fixedSubcategoryId == null) {
+                selectedSubcategoryId = null;
+              }
               subcategories.clear();
             });
             if (value != null) _loadSubcategories(value);
           }
         },
-        onSubcategoryChanged: (value) => setState(() => selectedSubcategoryId = value),
+        onSubcategoryChanged: (value) {
+          // ИЗМЕНИЛИ: проверяем на фиксированность перед изменением
+          if (widget.fixedSubcategoryId == null) {
+            setState(() => selectedSubcategoryId = value);
+          }
+        },
         onCityChanged: (value) => setState(() => selectedCityId = value),
         onPriceChanged: (newMaxPrice) => setState(() {
           maxPrice = newMaxPrice;
@@ -485,44 +510,44 @@ class _UniversalSearchScreenState extends State<UniversalSearchScreen> {
         title: Text(_screenTitle),
       ),
       body: SafeArea(
-        child: SingleChildScrollView( // Добавь этот wrapper
-          child: SizedBox(
-            height: MediaQuery.of(context).size.height -
-                MediaQuery.of(context).padding.top -
-                kToolbarHeight,
-            child: Column(
-              children: [
-                SearchHeader(
-                  controller: _searchController,
-                  focusNode: _focusNode,
-                  hasActiveFilters: _hasActiveFilters(),
-                  hintText: _searchHint,
-                  onSearch: (value) => _performSearch(query: value, resetPage: true),
-                  onFilterTap: _showFilters,
-                  onBack: () => Navigator.pop(context),
-                  showBackButton: true,
-                ),
-                Expanded(
-                  child: !hasSearched
-                      ? RecentSearches(
-                    searches: recentSearches,
-                    onSearchTap: (search) {
-                      _searchController.text = search;
-                      _performSearch(query: search, resetPage: true);
-                    },
-                    onRemoveSearch: _removeRecentSearch,
-                    onClearAll: _clearAllRecentSearches,
-                  )
-                      : isLoading
-                      ? const Center(child: CircularProgressIndicator(color: Color(0xFF2E7D5F)))
-                      : searchResults.isEmpty
-                      ? NoResults(onRetry: _resetToInitialState)
-                      : _buildSearchResults(),
-                ),
-              ],
+          child: SingleChildScrollView(
+            child: SizedBox(
+              height: MediaQuery.of(context).size.height -
+                  MediaQuery.of(context).padding.top -
+                  kToolbarHeight,
+              child: Column(
+                children: [
+                  SearchHeader(
+                    controller: _searchController,
+                    focusNode: _focusNode,
+                    hasActiveFilters: _hasActiveFilters(),
+                    hintText: _searchHint,
+                    onSearch: (value) => _performSearch(query: value, resetPage: true),
+                    onFilterTap: _showFilters,
+                    onBack: () => Navigator.pop(context),
+                    showBackButton: true,
+                  ),
+                  Expanded(
+                    child: !hasSearched
+                        ? RecentSearches(
+                      searches: recentSearches,
+                      onSearchTap: (search) {
+                        _searchController.text = search;
+                        _performSearch(query: search, resetPage: true);
+                      },
+                      onRemoveSearch: _removeRecentSearch,
+                      onClearAll: _clearAllRecentSearches,
+                    )
+                        : isLoading
+                        ? const Center(child: CircularProgressIndicator(color: Color(0xFF2E7D5F)))
+                        : searchResults.isEmpty
+                        ? NoResults(onRetry: _resetToInitialState)
+                        : _buildSearchResults(),
+                  ),
+                ],
+              ),
             ),
-          ),
-        )
+          )
       ),
     );
   }

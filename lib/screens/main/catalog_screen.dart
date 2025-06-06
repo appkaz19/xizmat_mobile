@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import '../../widgets/search_bar_widget.dart';
 import '../../widgets/service_category_card.dart';
+import '../../services/api/service.dart';
+import 'subcategory_screen.dart';
 
 class CatalogScreen extends StatefulWidget {
   const CatalogScreen({super.key});
@@ -10,23 +12,110 @@ class CatalogScreen extends StatefulWidget {
 }
 
 class _CatalogScreenState extends State<CatalogScreen> {
-  final List<Map<String, dynamic>> categories = [
-    {'title': 'Дом', 'icon': Icons.home, 'color': Colors.blue},
-    {'title': 'Ремонт', 'icon': Icons.build, 'color': Colors.orange},
-    {'title': 'Рем. техники', 'icon': Icons.devices, 'color': Colors.purple},
-    {'title': 'Перевозки', 'icon': Icons.local_shipping, 'color': Colors.red},
-    {'title': 'Красота', 'icon': Icons.face, 'color': Colors.pink},
-    {'title': 'IT и фриланс', 'icon': Icons.computer, 'color': Colors.green},
-    {'title': 'Ремесло', 'icon': Icons.handyman, 'color': Colors.brown},
-    {'title': 'Спецтехника', 'icon': Icons.construction, 'color': Colors.grey},
-    {'title': 'СТО', 'icon': Icons.car_repair, 'color': Colors.blue},
-    {'title': 'Праздники', 'icon': Icons.celebration, 'color': Colors.purple},
-    {'title': 'Деловые услуги', 'icon': Icons.business, 'color': Colors.indigo},
-    {'title': 'Спорт', 'icon': Icons.sports, 'color': Colors.orange},
-    {'title': 'Обучение', 'icon': Icons.school, 'color': Colors.teal},
-    {'title': 'Строительство', 'icon': Icons.construction, 'color': Colors.amber},
-    {'title': 'Прочие', 'icon': Icons.more_horiz, 'color': Colors.grey},
-  ];
+  List<Map<String, String>> categories = [];
+  bool isLoading = true;
+
+  // Иконки для категорий (можно дополнить)
+  final Map<String, IconData> categoryIcons = {
+    'Дом': Icons.home,
+    'Ремонт': Icons.build,
+    'Рем. техники': Icons.devices,
+    'Перевозки': Icons.local_shipping,
+    'Красота': Icons.face,
+    'IT и фриланс': Icons.computer,
+    'Ремесло': Icons.handyman,
+    'Спецтехника': Icons.construction,
+    'СТО': Icons.car_repair,
+    'Праздники': Icons.celebration,
+    'Деловые услуги': Icons.business,
+    'Спорт': Icons.sports,
+    'Обучение': Icons.school,
+    'Строительство': Icons.engineering,
+    'Прочие': Icons.more_horiz,
+  };
+
+  // Цвета для категорий
+  final Map<String, Color> categoryColors = {
+    'Дом': Colors.blue,
+    'Ремонт': Colors.orange,
+    'Рем. техники': Colors.purple,
+    'Перевозки': Colors.red,
+    'Красота': Colors.pink,
+    'IT и фриланс': Colors.green,
+    'Ремесло': Colors.brown,
+    'Спецтехника': Colors.grey,
+    'СТО': Colors.blue,
+    'Праздники': Colors.purple,
+    'Деловые услуги': Colors.indigo,
+    'Спорт': Colors.orange,
+    'Обучение': Colors.teal,
+    'Строительство': Colors.amber,
+    'Прочие': Colors.grey,
+  };
+
+  @override
+  void initState() {
+    super.initState();
+    _loadCategories();
+  }
+
+  Future<void> _loadCategories() async {
+    try {
+      final categoriesData = await ApiService.category.getCategories();
+      setState(() {
+        categories = categoriesData;
+        isLoading = false;
+      });
+    } catch (e) {
+      print('Ошибка загрузки категорий: $e');
+      setState(() {
+        isLoading = false;
+      });
+      // Показываем снекбар с ошибкой
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Ошибка загрузки категорий'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    }
+  }
+
+  IconData _getIconForCategory(String categoryName) {
+    // Ищем иконку по точному совпадению или частичному
+    for (final entry in categoryIcons.entries) {
+      if (categoryName.toLowerCase().contains(entry.key.toLowerCase()) ||
+          entry.key.toLowerCase().contains(categoryName.toLowerCase())) {
+        return entry.value;
+      }
+    }
+    return Icons.category; // Иконка по умолчанию
+  }
+
+  Color _getColorForCategory(String categoryName) {
+    // Ищем цвет по точному совпадению или частичному
+    for (final entry in categoryColors.entries) {
+      if (categoryName.toLowerCase().contains(entry.key.toLowerCase()) ||
+          entry.key.toLowerCase().contains(categoryName.toLowerCase())) {
+        return entry.value;
+      }
+    }
+    return Colors.grey; // Цвет по умолчанию
+  }
+
+  void _navigateToSubcategories(String categoryId, String categoryName) {
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => SubcategoryScreen(
+          categoryId: categoryId,
+          categoryName: categoryName,
+        ),
+      ),
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -35,42 +124,84 @@ class _CatalogScreenState extends State<CatalogScreen> {
         title: const Text('Все категории'),
         actions: [
           IconButton(
-            icon: const Icon(Icons.filter_list),
+            icon: const Icon(Icons.search),
             onPressed: () {
-              // Show filter options
+              // Переход к общему поиску без фиксированной категории
+              Navigator.pushNamed(context, '/search');
             },
           ),
         ],
       ),
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          children: [
-            const SearchBarWidget(),
-            const SizedBox(height: 24),
-            GridView.builder(
-              shrinkWrap: true,
-              physics: const NeverScrollableScrollPhysics(),
-              gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                crossAxisCount: 3,
-                childAspectRatio: 1,
-                crossAxisSpacing: 16,
-                mainAxisSpacing: 16,
-              ),
-              itemCount: categories.length,
-              itemBuilder: (context, index) {
-                final category = categories[index];
-                return ServiceCategoryCard(
-                  title: category['title'],
-                  icon: category['icon'],
-                  color: category['color'],
-                  onTap: () {
-                    // Navigate to category
+      body: RefreshIndicator(
+        onRefresh: _loadCategories,
+        child: SingleChildScrollView(
+          padding: const EdgeInsets.all(16),
+          physics: const AlwaysScrollableScrollPhysics(),
+          child: Column(
+            children: [
+              const SearchBarWidget(),
+              const SizedBox(height: 24),
+
+              if (isLoading)
+                const Center(
+                  child: Padding(
+                    padding: EdgeInsets.all(32),
+                    child: CircularProgressIndicator(
+                      color: Color(0xFF2E7D5F),
+                    ),
+                  ),
+                )
+              else if (categories.isEmpty)
+                const Center(
+                  child: Padding(
+                    padding: EdgeInsets.all(32),
+                    child: Column(
+                      children: [
+                        Icon(
+                          Icons.category_outlined,
+                          size: 64,
+                          color: Colors.grey,
+                        ),
+                        SizedBox(height: 16),
+                        Text(
+                          'Категории не найдены',
+                          style: TextStyle(
+                            fontSize: 18,
+                            color: Colors.grey,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                )
+              else
+                GridView.builder(
+                  shrinkWrap: true,
+                  physics: const NeverScrollableScrollPhysics(),
+                  gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                    crossAxisCount: 3,
+                    childAspectRatio: 1,
+                    crossAxisSpacing: 16,
+                    mainAxisSpacing: 16,
+                  ),
+                  itemCount: categories.length,
+                  itemBuilder: (context, index) {
+                    final category = categories[index];
+                    final categoryName = category['name'] ?? 'Без названия';
+                    final categoryId = category['id'] ?? '';
+
+                    return ServiceCategoryCard(
+                      title: categoryName,
+                      icon: _getIconForCategory(categoryName),
+                      color: _getColorForCategory(categoryName),
+                      onTap: () {
+                        _navigateToSubcategories(categoryId, categoryName);
+                      },
+                    );
                   },
-                );
-              },
-            ),
-          ],
+                ),
+            ],
+          ),
         ),
       ),
     );
