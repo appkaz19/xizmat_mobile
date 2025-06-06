@@ -2,8 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'dart:async';
 import '../../services/api/service.dart';
-import '../../services/api/apis/auth.dart'; // Для OtpVerificationResult
 import 'create_new_password_screen.dart';
+import 'profile_setup_screen.dart';
 import '../main/main_navigation.dart';
 
 class OtpVerificationScreen extends StatefulWidget {
@@ -266,24 +266,48 @@ class _OtpVerificationScreenState extends State<OtpVerificationScreen> {
     });
 
     try {
-      bool success = false;
-
       if (widget.isPasswordReset) {
+        // Обработка сброса пароля
         final result = await ApiService.auth.verifyResetOtp(widget.phone, otp);
         if (result.success) {
           Navigator.pushReplacement(
             context,
             MaterialPageRoute(
-              builder: (context) => const CreateNewPasswordScreen(), // БЕЗ параметров!
+              builder: (context) => const CreateNewPasswordScreen(),
             ),
           );
         } else {
           _showErrorDialog(result.message ?? 'Неверный код. Попробуйте еще раз.');
         }
-      }
+      } else if (widget.isRegistration) {
+        // ИСПРАВЛЕНО: Обработка регистрации
+        final result = await ApiService.auth.verifyOtp(widget.phone, otp);
+        if (result.success) {
+          // Успешная верификация после регистрации
+          _showSuccessDialog('Номер телефона подтвержден!');
 
-      if (!success && mounted) {
-        _showErrorDialog('Неверный код. Попробуйте еще раз.');
+          // После регистрации переходим к заполнению профиля
+          Navigator.pushReplacement(
+            context,
+            MaterialPageRoute(
+              builder: (context) => ProfileSetupScreen(phone: widget.phone),
+            ),
+          );
+        } else {
+          _showErrorDialog(result.message ?? 'Неверный код. Попробуйте еще раз.');
+        }
+      } else {
+        // Стандартная верификация OTP
+        final result = await ApiService.auth.verifyOtp(widget.phone, otp);
+        if (result.success) {
+          Navigator.pushAndRemoveUntil(
+            context,
+            MaterialPageRoute(builder: (context) => const MainNavigation()),
+                (route) => false,
+          );
+        } else {
+          _showErrorDialog(result.message ?? 'Неверный код. Попробуйте еще раз.');
+        }
       }
     } catch (e) {
       if (!mounted) return;
@@ -303,8 +327,10 @@ class _OtpVerificationScreenState extends State<OtpVerificationScreen> {
       if (widget.isPasswordReset) {
         await ApiService.auth.requestResetPassword(widget.phone);
       } else {
-        // Для регистрации может потребоваться отдельный метод
-        // await ApiService.auth.resendOtp(widget.phone);
+        // Для регистрации/стандартной верификации может потребоваться отдельный метод
+        // Пока используем тот же метод, что и для сброса пароля
+        // TODO: Добавить отдельный метод resendRegistrationOtp если нужно
+        await ApiService.auth.requestResetPassword(widget.phone);
       }
 
       if (mounted) {
@@ -450,6 +476,22 @@ class _OtpVerificationScreenState extends State<OtpVerificationScreen> {
         break;
       }
     }
+  }
+
+  void _showSuccessDialog(String message) {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Успешно!'),
+        content: Text(message),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(),
+            child: const Text('OK'),
+          ),
+        ],
+      ),
+    );
   }
 
   void _showErrorDialog(String message) {

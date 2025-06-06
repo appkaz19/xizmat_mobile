@@ -2,7 +2,8 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../../providers/auth_provider.dart';
-import '../profile/edit_profile_screen.dart';
+import '../../services/api/service.dart';
+import '../auth/profile_setup_screen.dart';
 import '../profile/settings_screen.dart';
 import '../profile/wallet_top_up_screen.dart';
 import '../profile/security_screen.dart';
@@ -22,6 +23,84 @@ class ProfileScreen extends StatefulWidget {
 
 class _ProfileScreenState extends State<ProfileScreen> {
   bool _isDarkTheme = false;
+  Map<String, dynamic>? _userProfile;
+  Map<String, dynamic>? _walletData;
+  bool _isLoading = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadUserData();
+  }
+
+  Future<void> _loadUserData() async {
+    try {
+      // Загружаем профиль и кошелек параллельно
+      final profileFuture = ApiService.user.getProfile();
+      final walletFuture = ApiService.wallet.getWallet();
+
+      final results = await Future.wait([profileFuture, walletFuture]);
+
+      if (mounted) {
+        setState(() {
+          _userProfile = results[0];
+          _walletData = results[1];
+          _isLoading = false;
+        });
+      }
+    } catch (e) {
+      print('Ошибка загрузки данных профиля: $e');
+      if (mounted) {
+        setState(() {
+          _isLoading = false;
+        });
+      }
+    }
+  }
+
+  String get _displayName {
+    if (_userProfile == null) return 'Пользователь';
+
+    final fullName = _userProfile!['fullName'];
+    final nickname = _userProfile!['nickname'];
+
+    if (fullName != null && fullName.isNotEmpty) {
+      return fullName;
+    } else if (nickname != null && nickname.isNotEmpty) {
+      return '@$nickname';
+    } else {
+      return 'Пользователь';
+    }
+  }
+
+  String get _displayEmail {
+    if (_userProfile == null) return 'Загружается...';
+
+    final email = _userProfile!['email'];
+    final phone = _userProfile!['phone'];
+
+    if (email != null && email.isNotEmpty) {
+      return email;
+    } else if (phone != null && phone.isNotEmpty) {
+      return phone;
+    } else {
+      return 'Не указано';
+    }
+  }
+
+  String? get _avatarUrl {
+    return _userProfile?['avatarUrl'];
+  }
+
+  String get _balanceText {
+    if (_walletData == null) return '';
+
+    final balance = _walletData!['balance'];
+    if (balance == null) return '';
+
+    final balanceInt = balance is int ? balance : int.tryParse(balance.toString()) ?? 0;
+    return '$balanceInt монет';
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -54,27 +133,56 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   CircleAvatar(
                     radius: 40,
                     backgroundColor: Colors.grey[300],
-                    child: const Icon(Icons.person, size: 40, color: Colors.grey),
+                    backgroundImage: _avatarUrl != null
+                        ? NetworkImage(_avatarUrl!)
+                        : null,
+                    child: _avatarUrl == null
+                        ? (_isLoading
+                        ? const SizedBox(
+                      width: 20,
+                      height: 20,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    )
+                        : const Icon(Icons.person, size: 40, color: Colors.grey))
+                        : null,
                   ),
                   const SizedBox(width: 16),
                   Expanded(
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        const Text(
-                          'Пример Примеров',
-                          style: TextStyle(
+                        Text(
+                          _displayName,
+                          style: const TextStyle(
                             fontSize: 20,
                             fontWeight: FontWeight.bold,
                           ),
                         ),
                         const SizedBox(height: 4),
                         Text(
-                          'andrew_ainsley@yourdomain.com',
+                          _displayEmail,
                           style: TextStyle(
                             color: Colors.grey[600],
                           ),
                         ),
+                        if (_balanceText.isNotEmpty) ...[
+                          const SizedBox(height: 4),
+                          Row(
+                            children: [
+                              const Icon(Icons.account_balance_wallet,
+                                  size: 16, color: Colors.amber),
+                              const SizedBox(width: 4),
+                              Text(
+                                _balanceText,
+                                style: const TextStyle(
+                                  color: Colors.amber,
+                                  fontWeight: FontWeight.w600,
+                                  fontSize: 12,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ],
                       ],
                     ),
                   ),
@@ -84,9 +192,17 @@ class _ProfileScreenState extends State<ProfileScreen> {
                       Navigator.push(
                         context,
                         MaterialPageRoute(
-                          builder: (context) => const EditProfileScreen(),
+                          builder: (context) => ProfileSetupScreen(
+                            phone: _userProfile?['phone'],
+                            isEditing: true,
+                          ),
                         ),
-                      );
+                      ).then((result) {
+                        // Обновляем данные после возврата из редактирования
+                        if (result == true) {
+                          _loadUserData();
+                        }
+                      });
                     },
                   ),
                 ],
@@ -103,9 +219,17 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 Navigator.push(
                   context,
                   MaterialPageRoute(
-                    builder: (context) => const EditProfileScreen(),
+                    builder: (context) => ProfileSetupScreen(
+                      phone: _userProfile?['phone'],
+                      isEditing: true,
+                    ),
                   ),
-                );
+                ).then((result) {
+                  // Обновляем данные после возврата из редактирования
+                  if (result == true) {
+                    _loadUserData();
+                  }
+                });
               },
             ),
 
@@ -138,13 +262,17 @@ class _ProfileScreenState extends State<ProfileScreen> {
             _buildMenuItem(
               icon: Icons.account_balance_wallet_outlined,
               title: 'Кошелек',
+              subtitle: _balanceText.isNotEmpty ? _balanceText : null,
               onTap: () {
                 Navigator.push(
                   context,
                   MaterialPageRoute(
                     builder: (context) => const WalletTopUpScreen(),
                   ),
-                );
+                ).then((_) {
+                  // Обновляем баланс после пополнения
+                  _loadUserData();
+                });
               },
             ),
 
@@ -183,6 +311,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 setState(() {
                   _isDarkTheme = value;
                 });
+                // TODO: Реализовать сохранение настройки темы
               },
             ),
 

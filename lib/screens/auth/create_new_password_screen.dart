@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
+import 'dart:async';
+import '../main/main_navigation.dart';
 import '../../services/api/service.dart';
-import 'password_success_screen.dart';
 
 class CreateNewPasswordScreen extends StatefulWidget {
   const CreateNewPasswordScreen({super.key});
@@ -401,11 +402,10 @@ class _CreateNewPasswordScreenState extends State<CreateNewPasswordScreen> {
                 child: OutlinedButton(
                   onPressed: () {
                     Navigator.of(context).pop(); // Close dialog
-                    Navigator.pushReplacement(
+                    Navigator.pushAndRemoveUntil(
                       context,
-                      MaterialPageRoute(
-                        builder: (context) => const PasswordSuccessScreen(),
-                      ),
+                      MaterialPageRoute(builder: (context) => const MainNavigation()),
+                          (route) => false,
                     );
                   },
                   style: OutlinedButton.styleFrom(
@@ -429,6 +429,18 @@ class _CreateNewPasswordScreenState extends State<CreateNewPasswordScreen> {
         ),
       ),
     );
+
+    // Автоматический переход через 3 секунды
+    Timer(const Duration(seconds: 3), () {
+      if (mounted) {
+        Navigator.of(context).pop(); // Close dialog
+        Navigator.pushAndRemoveUntil(
+          context,
+          MaterialPageRoute(builder: (context) => const MainNavigation()),
+              (route) => false,
+        );
+      }
+    });
   }
 
   void _showErrorDialog(String message) {

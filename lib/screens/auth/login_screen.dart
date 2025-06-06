@@ -4,6 +4,7 @@ import '../../services/api/service.dart';
 import '../../widgets/social_login_button.dart';
 import 'forgot_password_screen.dart';
 import 'register_screen.dart';
+import 'otp_verification_screen.dart';
 import '../main/main_navigation.dart';
 
 class LoginScreen extends StatefulWidget {
@@ -123,6 +124,7 @@ class _LoginScreenState extends State<LoginScreen> {
                         border: OutlineInputBorder(),
                       ),
                       keyboardType: TextInputType.phone,
+                      enabled: !_isLoading,
                       validator: (value) {
                         if (value == null || value.isEmpty) {
                           return 'Введите номер телефона';
@@ -151,6 +153,7 @@ class _LoginScreenState extends State<LoginScreen> {
                         border: const OutlineInputBorder(),
                       ),
                       obscureText: _obscurePassword,
+                      enabled: !_isLoading,
                       validator: (value) {
                         if (value == null || value.isEmpty) {
                           return 'Введите пароль';
@@ -165,7 +168,7 @@ class _LoginScreenState extends State<LoginScreen> {
                       children: [
                         Checkbox(
                           value: _rememberMe,
-                          onChanged: (value) {
+                          onChanged: _isLoading ? null : (value) {
                             setState(() {
                               _rememberMe = value ?? false;
                             });
@@ -212,7 +215,7 @@ class _LoginScreenState extends State<LoginScreen> {
                     const SizedBox(height: 16),
 
                     TextButton(
-                      onPressed: () {
+                      onPressed: _isLoading ? null : () {
                         Navigator.push(
                           context,
                           MaterialPageRoute(
@@ -236,7 +239,7 @@ class _LoginScreenState extends State<LoginScreen> {
                 children: [
                   const Text('Нет аккаунта? '),
                   TextButton(
-                    onPressed: () {
+                    onPressed: _isLoading ? null : () {
                       Navigator.push(
                         context,
                         MaterialPageRoute(
@@ -272,62 +275,101 @@ class _LoginScreenState extends State<LoginScreen> {
   }
 
   Future<void> _login() async {
-    if (!_formKey.currentState!.validate()) {
-      return;
-    }
+    if (!_formKey.currentState!.validate()) return;
 
-    setState(() => _isLoading = true);
+    setState(() {
+      _isLoading = true;
+    });
 
     try {
-      final phone = _phoneController.text.trim();
-      final password = _passwordController.text.trim();
+      final success = await ApiService.auth.login(
+        _phoneController.text.trim(),
+        _passwordController.text,
+      );
 
-      print('Попытка входа: телефон = $phone');
-
-      final success = await ApiService.auth.login(phone, password);
+      if (!mounted) return;
 
       if (success) {
-        print('Успешный вход!');
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text('Успешный вход!'),
-              backgroundColor: Color(0xFF2E7D5F),
-            ),
-          );
-
-          // Переход на главный экран
-          Navigator.pushReplacement(
-            context,
-            MaterialPageRoute(builder: (context) => const MainNavigation()),
-          );
-        }
-      } else {
-        if (mounted) {
-          _showErrorDialog('Ошибка входа', 'Неверный номер телефона или пароль');
-        }
+        // Успешный логин
+        Navigator.pushAndRemoveUntil(
+          context,
+          MaterialPageRoute(builder: (context) => const MainNavigation()),
+              (route) => false,
+        );
       }
     } catch (e) {
-      print('Ошибка входа: $e');
-      if (mounted) {
-        _showErrorDialog('Ошибка', 'Произошла ошибка при входе. Попробуйте снова.');
+      if (!mounted) return;
+
+      String errorMessage = 'Произошла ошибка при входе';
+
+      if (e.toString().contains('USER_NOT_VERIFIED')) {
+        // Пользователь не верифицирован - предлагаем верификацию
+        _showUserNotVerifiedDialog();
+        return;
+      } else if (e.toString().contains('INVALID_CREDENTIALS')) {
+        errorMessage = 'Неверный номер телефона или пароль';
+      } else {
+        errorMessage = 'Ошибка соединения. Проверьте интернет-подключение.';
       }
+
+      _showErrorDialog(errorMessage);
     } finally {
       if (mounted) {
-        setState(() => _isLoading = false);
+        setState(() {
+          _isLoading = false;
+        });
       }
     }
   }
 
-  void _showErrorDialog(String title, String message) {
+  void _showUserNotVerifiedDialog() {
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
-        title: Text(title),
+        title: const Text('Подтверждение требуется'),
+        content: const Text(
+            'Ваш номер телефона не подтвержден. Хотите получить код подтверждения?'
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(),
+            child: const Text('Отмена'),
+          ),
+          ElevatedButton(
+            onPressed: () {
+              Navigator.of(context).pop();
+              // Переходим к верификации (используем тот же флоу что и при регистрации)
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (context) => OtpVerificationScreen(
+                    phone: _phoneController.text.trim(),
+                    isRegistration: true, // Тот же флоу: OTP → ProfileSetup → MainNavigation
+                    isPasswordReset: false,
+                  ),
+                ),
+              );
+            },
+            style: ElevatedButton.styleFrom(
+              backgroundColor: const Color(0xFF2E7D5F),
+              foregroundColor: Colors.white,
+            ),
+            child: const Text('Подтвердить'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _showErrorDialog(String message) {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Ошибка'),
         content: Text(message),
         actions: [
           TextButton(
-            onPressed: () => Navigator.pop(context),
+            onPressed: () => Navigator.of(context).pop(),
             child: const Text(
               'OK',
               style: TextStyle(color: Color(0xFF2E7D5F)),

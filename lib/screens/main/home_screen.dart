@@ -1,8 +1,9 @@
 import 'package:flutter/material.dart';
 import '../../widgets/search_bar_widget.dart';
+import '../../services/api/service.dart';
 import '../search/universal_search_screen.dart';
 import '../services/add_service_screen.dart';
-import '../jobs/add_job_screen.dart'; // Добавили импорт
+import '../jobs/add_job_screen.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -12,6 +13,88 @@ class HomeScreen extends StatefulWidget {
 }
 
 class _HomeScreenState extends State<HomeScreen> {
+  Map<String, dynamic>? _userProfile;
+  Map<String, dynamic>? _walletData;
+  bool _isLoading = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadUserProfile();
+  }
+
+  Future<void> _loadUserProfile() async {
+    try {
+      // Загружаем профиль и кошелек параллельно
+      final profileFuture = ApiService.user.getProfile();
+      final walletFuture = ApiService.wallet.getWallet();
+
+      final results = await Future.wait([profileFuture, walletFuture]);
+
+      if (mounted) {
+        setState(() {
+          _userProfile = results[0];
+          _walletData = results[1];
+          _isLoading = false;
+        });
+      }
+    } catch (e) {
+      print('Ошибка загрузки данных: $e');
+      if (mounted) {
+        setState(() {
+          _isLoading = false;
+        });
+      }
+    }
+  }
+
+  String get _displayName {
+    if (_userProfile == null) return 'Пользователь';
+
+    final fullName = _userProfile!['fullName'];
+    final nickname = _userProfile!['nickname'];
+
+    if (fullName != null && fullName.isNotEmpty) {
+      return fullName;
+    } else if (nickname != null && nickname.isNotEmpty) {
+      return '@$nickname';
+    } else {
+      return 'Пользователь';
+    }
+  }
+
+  String? get _avatarUrl {
+    return _userProfile?['avatarUrl'];
+  }
+
+  String get _coinsDisplay {
+    if (_isLoading) return 'Загружается...';
+    if (_walletData == null) return 'Ошибка загрузки';
+
+    final balance = _walletData!['balance'];
+    if (balance == null) return '0 монет';
+
+    // Форматируем число с разделителями
+    final balanceInt = balance is int ? balance : int.tryParse(balance.toString()) ?? 0;
+    return '${_formatNumber(balanceInt)} монет';
+  }
+
+  String _formatNumber(int number) {
+    if (number < 1000) return number.toString();
+
+    String numberStr = number.toString();
+    String result = '';
+
+    for (int i = 0; i < numberStr.length; i++) {
+      if (i > 0 && (numberStr.length - i) % 3 == 0) {
+        result += ' ';
+      }
+      result += numberStr[i];
+    }
+
+    return result;
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -27,30 +110,43 @@ class _HomeScreenState extends State<HomeScreen> {
                   CircleAvatar(
                     radius: 25,
                     backgroundColor: Colors.grey[300],
-                    child: const Icon(Icons.person, size: 25),
+                    backgroundImage: _avatarUrl != null
+                        ? NetworkImage(_avatarUrl!)
+                        : null,
+                    child: _avatarUrl == null
+                        ? (_isLoading
+                        ? const SizedBox(
+                      width: 20,
+                      height: 20,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    )
+                        : const Icon(Icons.person, size: 25))
+                        : null,
                   ),
                   const SizedBox(width: 12),
-                  const Expanded(
+                  Expanded(
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Text(
-                          'Пример Примеров',
-                          style: TextStyle(
+                          _displayName,
+                          style: const TextStyle(
                             fontSize: 18,
                             fontWeight: FontWeight.bold,
                           ),
                         ),
+                        // Реальный баланс монет
                         Row(
                           children: [
-                            Icon(Icons.account_balance_wallet,
+                            const Icon(Icons.account_balance_wallet,
                                 size: 16, color: Colors.amber),
-                            SizedBox(width: 4),
+                            const SizedBox(width: 4),
                             Text(
-                              '5000 монет',
+                              _coinsDisplay,
                               style: TextStyle(
-                                color: Colors.amber,
+                                color: _isLoading ? Colors.grey : Colors.amber,
                                 fontWeight: FontWeight.w600,
+                                fontSize: 12,
                               ),
                             ),
                           ],
