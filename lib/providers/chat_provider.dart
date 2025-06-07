@@ -7,6 +7,7 @@ class ChatProvider with ChangeNotifier {
   bool _isLoading = false;
   bool _isInitialized = false;
   String? _error;
+  void Function(Map<String, dynamic>)? _socketListener;
 
   List<Map<String, dynamic>> get chats => _chats;
   bool get isLoading => _isLoading;
@@ -47,10 +48,9 @@ class ChatProvider with ChangeNotifier {
   Future<void> _initializeSocket() async {
     final socketService = SocketService.instance;
 
-    // Устанавливаем callback для новых сообщений
-    socketService.onNewMessage = (messageData) {
-      _handleNewSocketMessage(messageData);
-    };
+    // Регистрируем слушатель для новых сообщений
+    _socketListener ??= _handleNewSocketMessage;
+    socketService.addNewMessageListener(_socketListener!);
 
     // Подключаемся к сокету
     await socketService.connect();
@@ -163,8 +163,11 @@ class ChatProvider with ChangeNotifier {
 
   @override
   void dispose() {
-    // Отключаем сокет при удалении провайдера
-    SocketService.instance.dispose();
+    // Удаляем слушатель, но не отключаем сокет полностью,
+    // так как его могут использовать другие экраны
+    if (_socketListener != null) {
+      SocketService.instance.removeNewMessageListener(_socketListener!);
+    }
     super.dispose();
   }
 }

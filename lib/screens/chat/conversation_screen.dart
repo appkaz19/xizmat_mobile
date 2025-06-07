@@ -30,6 +30,7 @@ class _ConversationScreenState extends State<ConversationScreen> {
   bool isLoading = true;
   bool isSending = false;
   String? currentUserId;
+  void Function(Map<String, dynamic>)? _socketListener;
 
   @override
   void initState() {
@@ -51,12 +52,13 @@ class _ConversationScreenState extends State<ConversationScreen> {
   Future<void> _setupSocket() async {
     final socketService = SocketService.instance;
 
-    // Устанавливаем callback для новых сообщений в этом чате
-    socketService.onNewMessage = (messageData) {
+    // Регистрируем слушатель для сообщений этого чата
+    _socketListener ??= (messageData) {
       if (messageData['chatId'] == widget.chatId) {
         _handleNewMessage(messageData);
       }
     };
+    socketService.addNewMessageListener(_socketListener!);
 
     // Присоединяемся к чату
     socketService.joinChat(widget.chatId);
@@ -65,7 +67,9 @@ class _ConversationScreenState extends State<ConversationScreen> {
   void _cleanupSocket() {
     final socketService = SocketService.instance;
     socketService.leaveChat(widget.chatId);
-    socketService.onNewMessage = null;
+    if (_socketListener != null) {
+      socketService.removeNewMessageListener(_socketListener!);
+    }
   }
 
   void _handleNewMessage(Map<String, dynamic> messageData) {
