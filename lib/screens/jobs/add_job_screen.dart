@@ -36,10 +36,9 @@ class _AddJobScreenState extends State<AddJobScreen> {
   bool _isUploading = false;
   String _uploadProgress = '';
 
-  // Contact method selection - УБРАЛИ
-  // bool _allowChat = true;
-  // bool _allowCall = false;
-  // String _phoneNumber = '';
+  // ДОБАВИЛИ: выбор способов связи
+  bool _allowChat = true;
+  bool _allowPhone = true;
 
   @override
   void initState() {
@@ -85,7 +84,8 @@ class _AddJobScreenState extends State<AddJobScreen> {
         _descriptionController.text.trim().isNotEmpty &&
         _priceController.text.trim().isNotEmpty &&
         _addressController.text.trim().isNotEmpty &&
-        _selectedImages.isNotEmpty;
+        _selectedImages.isNotEmpty &&
+        (_allowChat || _allowPhone); // ДОБАВИЛИ: хотя бы один способ связи должен быть выбран
   }
 
   @override
@@ -235,6 +235,46 @@ class _AddJobScreenState extends State<AddJobScreen> {
 
               const SizedBox(height: 24),
 
+              // Address
+              const Text(
+                'Адрес',
+                style: TextStyle(
+                  fontSize: 16,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+
+              const SizedBox(height: 8),
+
+              TextFormField(
+                controller: _addressController,
+                enabled: !_isUploading,
+                decoration: const InputDecoration(
+                  border: OutlineInputBorder(),
+                  hintText: 'г. Алматы, адрес не указан',
+                  prefixIcon: Icon(Icons.location_on),
+                ),
+                validator: (value) {
+                  if (value == null || value.trim().isEmpty) {
+                    return 'Пожалуйста, введите адрес';
+                  }
+                  return null;
+                },
+                onChanged: (value) => setState(() {}),
+              ),
+
+              const SizedBox(height: 16),
+
+              Text(
+                'Рекомендуем указать адрес, чтобы специалисты могли понять маршрут и время на дорогу',
+                style: TextStyle(
+                  color: Colors.grey[600],
+                  fontSize: 12,
+                ),
+              ),
+
+              const SizedBox(height: 24),
+
               // City Selection
               const Text(
                 'Город',
@@ -256,46 +296,6 @@ class _AddJobScreenState extends State<AddJobScreen> {
                       _selectedCityId = cityId;
                     });
                   },
-                ),
-              ),
-
-              const SizedBox(height: 24),
-
-              // Address
-              const Text(
-                'Адрес',
-                style: TextStyle(
-                  fontSize: 16,
-                  fontWeight: FontWeight.w600,
-                ),
-              ),
-
-              const SizedBox(height: 8),
-
-              TextFormField(
-                controller: _addressController,
-                enabled: !_isUploading,
-                decoration: const InputDecoration(
-                  border: OutlineInputBorder(),
-                  hintText: 'Укажите точный адрес',
-                  prefixIcon: Icon(Icons.location_on),
-                ),
-                validator: (value) {
-                  if (value == null || value.trim().isEmpty) {
-                    return 'Пожалуйста, введите адрес';
-                  }
-                  return null;
-                },
-                onChanged: (value) => setState(() {}),
-              ),
-
-              const SizedBox(height: 16),
-
-              Text(
-                'Рекомендуем указать адрес, чтобы специалисты могли понять маршрут и время на дорогу',
-                style: TextStyle(
-                  color: Colors.grey[600],
-                  fontSize: 12,
                 ),
               ),
 
@@ -443,6 +443,95 @@ class _AddJobScreenState extends State<AddJobScreen> {
                   style: TextStyle(
                     color: Colors.grey[600],
                     fontSize: 14,
+                  ),
+                ),
+              ],
+
+              const SizedBox(height: 32),
+
+              // ДОБАВИЛИ: Секция "Как с вами связаться?"
+              const Text(
+                'Как с вами связаться?',
+                style: TextStyle(
+                  fontSize: 16,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+
+              const SizedBox(height: 16),
+
+              Row(
+                children: [
+                  // Кнопка "Чат"
+                  Expanded(
+                    child: GestureDetector(
+                      onTap: _isUploading ? null : () {
+                        setState(() {
+                          _allowChat = !_allowChat;
+                        });
+                      },
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(vertical: 12),
+                        decoration: BoxDecoration(
+                          color: _allowChat
+                              ? AppColors.primary
+                              : (_isUploading ? Colors.grey[300] : Colors.grey[200]),
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        child: Text(
+                          'Чат',
+                          textAlign: TextAlign.center,
+                          style: TextStyle(
+                            color: _allowChat ? Colors.white : Colors.black54,
+                            fontWeight: FontWeight.w600,
+                            fontSize: 16,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+
+                  const SizedBox(width: 12),
+
+                  // Кнопка "Звонок"
+                  Expanded(
+                    child: GestureDetector(
+                      onTap: _isUploading ? null : () {
+                        setState(() {
+                          _allowPhone = !_allowPhone;
+                        });
+                      },
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(vertical: 12),
+                        decoration: BoxDecoration(
+                          color: _allowPhone
+                              ? const Color(0xFF4FC3F7)
+                              : (_isUploading ? Colors.grey[300] : Colors.grey[200]),
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        child: Text(
+                          'Звонок',
+                          textAlign: TextAlign.center,
+                          style: TextStyle(
+                            color: _allowPhone ? Colors.white : Colors.black54,
+                            fontWeight: FontWeight.w600,
+                            fontSize: 16,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+
+              // ДОБАВИЛИ: проверка что выбран хотя бы один способ связи
+              if (!_allowChat && !_allowPhone) ...[
+                const SizedBox(height: 8),
+                Text(
+                  'Выберите хотя бы один способ связи',
+                  style: TextStyle(
+                    color: Colors.red[600],
+                    fontSize: 12,
                   ),
                 ),
               ],
@@ -609,7 +698,7 @@ class _AddJobScreenState extends State<AddJobScreen> {
         throw Exception('Не удалось загрузить ни одного изображения');
       }
 
-      // Собираем данные для передачи на следующий экран
+      // ОБНОВИЛИ: добавляем allowChat и allowPhone в данные
       final jobData = {
         'title': _titleController.text.trim(),
         'description': _descriptionController.text.trim(),
@@ -617,6 +706,8 @@ class _AddJobScreenState extends State<AddJobScreen> {
         'cityId': _selectedCityId,
         'address': _addressController.text.trim(),
         'images': imageUrls,
+        'allowChat': _allowChat,    // ДОБАВИЛИ
+        'allowPhone': _allowPhone,  // ДОБАВИЛИ
       };
 
       setState(() {

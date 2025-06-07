@@ -556,8 +556,9 @@ class _ProfileSetupScreenState extends State<ProfileSetupScreen> {
         profileData['email'] = _emailController.text.trim();
       }
       if (_selectedDate != null) {
-        // Отправляем дату в ISO-8601 формате
-        profileData['birthdate'] = _selectedDate!.toIso8601String();
+        // Устанавливаем время в полночь UTC для корректного ISO-8601
+        final utcDate = DateTime.utc(_selectedDate!.year, _selectedDate!.month, _selectedDate!.day);
+        profileData['birthdate'] = utcDate.toIso8601String();
       }
 
       // Отправляем аватар только если он был изменен

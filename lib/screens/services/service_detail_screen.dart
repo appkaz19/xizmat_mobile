@@ -9,6 +9,7 @@ import '../../widgets/service_media_carousel.dart';
 import '../../widgets/media_grid_preview.dart';
 import '../../widgets/reviews_section.dart';
 import '../../widgets/full_gallery_modal.dart';
+import '../chat/conversation_screen.dart';
 
 class ServiceDetailScreen extends StatefulWidget {
   final String serviceId;
@@ -132,6 +133,64 @@ class _ServiceDetailScreenState extends State<ServiceDetailScreen> {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text('Ошибка: ${e.toString()}'),
+          backgroundColor: Colors.red,
+        ),
+      );
+    }
+  }
+
+  Future<void> _startChat() async {
+    final user = serviceData!['user'] as Map<String, dynamic>? ?? {};
+    final targetUserId = user['id']?.toString();
+
+    if (targetUserId == null || targetUserId.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Невозможно начать чат: пользователь не найден'),
+          backgroundColor: Colors.red,
+        ),
+      );
+      return;
+    }
+
+    try {
+      // Показываем индикатор загрузки
+      showDialog(
+        context: context,
+        barrierDismissible: false,
+        builder: (context) => const Center(
+          child: CircularProgressIndicator(color: AppColors.primary),
+        ),
+      );
+
+      // Создаем или получаем существующий чат
+      final chatData = await ApiService.chat.startChat(targetUserId);
+
+      Navigator.of(context).pop(); // Закрываем диалог загрузки
+
+      if (chatData != null) {
+        // Переходим в чат
+        Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (context) => ConversationScreen(
+              chatId: chatData['id'].toString(),
+              otherUserId: targetUserId,
+              userName: user['fullName'] ?? user['phone'] ?? 'Исполнитель',
+              avatarUrl: user['avatarUrl'],
+            ),
+          ),
+        );
+      } else {
+        throw Exception('Не удалось создать чат');
+      }
+    } catch (e) {
+      Navigator.of(context).pop(); // Закрываем диалог загрузки
+
+      print('Ошибка создания чата: $e');
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Ошибка создания чата: ${e.toString()}'),
           backgroundColor: Colors.red,
         ),
       );
@@ -582,11 +641,7 @@ class _ServiceDetailScreenState extends State<ServiceDetailScreen> {
           children: [
             Expanded(
               child: ElevatedButton.icon(
-                onPressed: () {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(content: Text('Переход в чаты будет реализован позже')),
-                  );
-                },
+                onPressed: () => _startChat(),
                 icon: const Icon(Icons.message, size: 20),
                 label: const Text('Написать'),
                 style: ElevatedButton.styleFrom(

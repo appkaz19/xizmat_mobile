@@ -30,12 +30,13 @@ class JobApi {
     return res.statusCode == 200;
   }
 
-  Future<List<Map<String, dynamic>>> searchJobs(Map<String, dynamic> query) async {
+  Future<List<Map<String, dynamic>>> searchJobs(Map<String, dynamic> queryParams) async {
     final res = await CoreApi.sendRequest(
-        path: '/jobs',
-        method: 'GET',
-        query: query
+      path: '/jobs',
+      method: 'GET',
+      query: queryParams,
     );
+
     if (res.statusCode == 200) {
       final responseString = await res.transform(utf8.decoder).join();
       final data = jsonDecode(responseString) as List;

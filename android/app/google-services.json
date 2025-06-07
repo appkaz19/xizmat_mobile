@@ -1,0 +1,39 @@
+{
+  "project_info": {
+    "project_number": "541920271999",
+    "project_id": "kyzmet-d8a48",
+    "storage_bucket": "kyzmet-d8a48.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:541920271999:android:cfa418e6ceb1f65abc694a",
+        "android_client_info": {
+          "package_name": "uz.xizmat.mobile"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "541920271999-bv9ppaqg4ma19liakmfufkjuo4lp2sbq.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyD9kbJnGAIVKp6_eKWRNK8czmFZZd8OhMo"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "541920271999-bv9ppaqg4ma19liakmfufkjuo4lp2sbq.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

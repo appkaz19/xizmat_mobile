@@ -1,10 +1,12 @@
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 import '../../widgets/search_bar_widget.dart';
 import '../../services/api/service.dart';
+import '../../providers/chat_provider.dart';
 import '../search/universal_search_screen.dart';
 import '../services/add_service_screen.dart';
 import '../jobs/add_job_screen.dart';
-import '../my_items/my_items_screen.dart'; // Новый импорт
+import '../my_items/my_items_screen.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -26,12 +28,20 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
     super.initState();
     _tabController = TabController(length: 2, vsync: this);
     _loadUserProfile();
+    _initializeChatProvider();
   }
 
   @override
   void dispose() {
     _tabController.dispose();
     super.dispose();
+  }
+
+  Future<void> _initializeChatProvider() async {
+    final chatProvider = Provider.of<ChatProvider>(context, listen: false);
+    if (!chatProvider.isInitialized) {
+      await chatProvider.initialize();
+    }
   }
 
   Future<void> _loadUserProfile() async {
@@ -170,10 +180,46 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
                       // Show location
                     },
                   ),
-                  IconButton(
-                    icon: const Icon(Icons.notifications_outlined),
-                    onPressed: () {
-                      // Show notifications
+                  // Кнопка уведомлений с индикатором чатов
+                  Consumer<ChatProvider>(
+                    builder: (context, chatProvider, child) {
+                      return Stack(
+                        children: [
+                          IconButton(
+                            icon: const Icon(Icons.notifications_outlined),
+                            onPressed: () {
+                              // Show notifications
+                            },
+                          ),
+                          if (chatProvider.hasUnreadMessages)
+                            Positioned(
+                              right: 8,
+                              top: 8,
+                              child: Container(
+                                padding: const EdgeInsets.all(2),
+                                decoration: BoxDecoration(
+                                  color: Colors.red,
+                                  borderRadius: BorderRadius.circular(10),
+                                ),
+                                constraints: const BoxConstraints(
+                                  minWidth: 16,
+                                  minHeight: 16,
+                                ),
+                                child: Text(
+                                  chatProvider.totalUnreadCount > 99
+                                      ? '99+'
+                                      : chatProvider.totalUnreadCount.toString(),
+                                  style: const TextStyle(
+                                    color: Colors.white,
+                                    fontSize: 12,
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                                  textAlign: TextAlign.center,
+                                ),
+                              ),
+                            ),
+                        ],
+                      );
                     },
                   ),
                 ],
@@ -346,6 +392,75 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
           ),
 
           const SizedBox(height: 24),
+
+          // Уведомления о новых сообщениях
+          Consumer<ChatProvider>(
+            builder: (context, chatProvider, child) {
+              if (chatProvider.hasUnreadMessages) {
+                return Container(
+                  margin: const EdgeInsets.only(bottom: 24),
+                  padding: const EdgeInsets.all(16),
+                  decoration: BoxDecoration(
+                    gradient: LinearGradient(
+                      colors: [
+                        const Color(0xFF2E7D5F).withOpacity(0.1),
+                        const Color(0xFF4CAF50).withOpacity(0.1),
+                      ],
+                    ),
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(
+                      color: const Color(0xFF2E7D5F).withOpacity(0.3),
+                      width: 1,
+                    ),
+                  ),
+                  child: Row(
+                    children: [
+                      Container(
+                        padding: const EdgeInsets.all(8),
+                        decoration: const BoxDecoration(
+                          color: Color(0xFF2E7D5F),
+                          shape: BoxShape.circle,
+                        ),
+                        child: const Icon(
+                          Icons.message,
+                          color: Colors.white,
+                          size: 20,
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              'У вас ${chatProvider.totalUnreadCount} новых сообщений',
+                              style: const TextStyle(
+                                fontSize: 14,
+                                fontWeight: FontWeight.w600,
+                                color: Color(0xFF2E7D5F),
+                              ),
+                            ),
+                            const Text(
+                              'Проверьте чаты для ответа',
+                              style: TextStyle(
+                                fontSize: 12,
+                                color: Colors.grey,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      const Icon(
+                        Icons.chevron_right,
+                        color: Color(0xFF2E7D5F),
+                      ),
+                    ],
+                  ),
+                );
+              }
+              return const SizedBox.shrink();
+            },
+          ),
 
           // AI Agent Card
           Container(

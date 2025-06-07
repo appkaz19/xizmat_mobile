@@ -8,6 +8,7 @@ import '../../utils/favorites_utils.dart';
 import '../../widgets/service_media_carousel.dart';
 import '../../widgets/media_grid_preview.dart';
 import '../../widgets/full_gallery_modal.dart';
+import '../chat/conversation_screen.dart';
 
 class JobDetailScreen extends StatefulWidget {
   final String jobId;
@@ -57,6 +58,14 @@ class _JobDetailScreenState extends State<JobDetailScreen> {
           contactInfo = data?['contact'];
         }
       });
+
+      // ДОБАВИЛИ: отладочный вывод для понимания структуры данных
+      print('=== JOB DATA DEBUG ===');
+      print('Full jobData: $jobData');
+      print('City data: ${jobData?['city']}');
+      print('Region data: ${jobData?['region']}');
+      print('Address: ${jobData?['address']}');
+      print('=====================');
     } catch (e) {
       print('Ошибка загрузки объявления: $e');
       setState(() => isLoading = false);
@@ -125,6 +134,64 @@ class _JobDetailScreenState extends State<JobDetailScreen> {
     }
   }
 
+  Future<void> _startChat() async {
+    final user = jobData!['user'] as Map<String, dynamic>? ?? {};
+    final targetUserId = user['id']?.toString();
+
+    if (targetUserId == null || targetUserId.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Невозможно начать чат: пользователь не найден'),
+          backgroundColor: Colors.red,
+        ),
+      );
+      return;
+    }
+
+    try {
+      // Показываем индикатор загрузки
+      showDialog(
+        context: context,
+        barrierDismissible: false,
+        builder: (context) => const Center(
+          child: CircularProgressIndicator(color: AppColors.primary),
+        ),
+      );
+
+      // Создаем или получаем существующий чат
+      final chatData = await ApiService.chat.startChat(targetUserId);
+
+      Navigator.of(context).pop(); // Закрываем диалог загрузки
+
+      if (chatData != null) {
+        // Переходим в чат
+        Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (context) => ConversationScreen(
+              chatId: chatData['id'].toString(),
+              otherUserId: targetUserId,
+              userName: user['fullName'] ?? user['phone'] ?? 'Работодатель',
+              avatarUrl: user['avatarUrl'],
+            ),
+          ),
+        );
+      } else {
+        throw Exception('Не удалось создать чат');
+      }
+    } catch (e) {
+      Navigator.of(context).pop(); // Закрываем диалог загрузки
+
+      print('Ошибка создания чата: $e');
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Ошибка создания чата: ${e.toString()}'),
+          backgroundColor: Colors.red,
+        ),
+      );
+    }
+  }
+
   Future<void> _makePhoneCall(String phoneNumber) async {
     final Uri launchUri = Uri(
       scheme: 'tel',
@@ -151,14 +218,97 @@ class _JobDetailScreenState extends State<JobDetailScreen> {
     );
   }
 
+  // ИСПРАВИЛИ: методы получения города и региона
   String _getCityName() {
-    if (jobData?['city'] == null) return 'Город не указан';
-    return jobData!['city']['name'] ?? 'Город не указан';
+    // Проверяем разные возможные структуры данных
+    final city = jobData?['city'];
+    if (city == null) return 'Город не указан';
+
+    // Если city - это объект с переводами
+    if (city is Map<String, dynamic>) {
+      // Проверяем translations
+      final translations = city['translations'] as List<dynamic>?;
+      if (translations != null && translations.isNotEmpty) {
+        final translation = translations.first as Map<String, dynamic>?;
+        final name = translation?['name'];
+        if (name != null && name.toString().isNotEmpty) {
+          return name.toString();
+        }
+      }
+
+      // Проверяем прямое поле name
+      final name = city['name'];
+      if (name != null && name.toString().isNotEmpty) {
+        return name.toString();
+      }
+    }
+
+    // Если city - это строка
+    if (city is String && city.isNotEmpty) {
+      return city;
+    }
+
+    return 'Город не указан';
   }
 
   String _getRegionName() {
-    if (jobData?['region'] == null) return '';
-    return jobData!['region']['name'] ?? '';
+    // Проверяем разные возможные структуры данных
+    final region = jobData?['region'];
+    if (region == null) return '';
+
+    // Если region - это объект с переводами
+    if (region is Map<String, dynamic>) {
+      // Проверяем translations
+      final translations = region['translations'] as List<dynamic>?;
+      if (translations != null && translations.isNotEmpty) {
+        final translation = translations.first as Map<String, dynamic>?;
+        final name = translation?['name'];
+        if (name != null && name.toString().isNotEmpty) {
+          return name.toString();
+        }
+      }
+
+      // Проверяем прямое поле name
+      final name = region['name'];
+      if (name != null && name.toString().isNotEmpty) {
+        return name.toString();
+      }
+    }
+
+    // Если region - это строка
+    if (region is String && region.isNotEmpty) {
+      return region;
+    }
+
+    return '';
+  }
+
+  String _getAddress() {
+    final address = jobData?['address'];
+    if (address == null || address.toString().trim().isEmpty) {
+      return 'Адрес не указан';
+    }
+    return address.toString();
+  }
+
+  // ДОБАВИЛИ: метод для построения строки местоположения
+  String _buildLocationString() {
+    final cityName = _getCityName();
+    final regionName = _getRegionName();
+
+    if (cityName == 'Город не указан' && regionName.isEmpty) {
+      return 'Местоположение не указано';
+    }
+
+    if (regionName.isEmpty) {
+      return cityName;
+    }
+
+    if (cityName == 'Город не указан') {
+      return regionName;
+    }
+
+    return '$cityName, $regionName';
   }
 
   List<String> _getAllImages() {
@@ -192,7 +342,6 @@ class _JobDetailScreenState extends State<JobDetailScreen> {
     final title = jobData!['title'] ?? 'Без названия';
     final description = jobData!['description'] ?? '';
     final price = jobData!['price']?.toString() ?? '0';
-    final address = jobData!['address'] ?? 'Адрес не указан';
 
     return Scaffold(
       body: CustomScrollView(
@@ -260,18 +409,35 @@ class _JobDetailScreenState extends State<JobDetailScreen> {
 
                   const SizedBox(height: 16),
 
-                  // Location
+                  // Location - ИСПРАВИЛИ
                   Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       const Icon(Icons.location_on, size: 18, color: AppColors.textSecondary),
                       const SizedBox(width: 4),
                       Expanded(
-                        child: Text(
-                          '${_getCityName()}, ${_getRegionName()}\n$address',
-                          style: const TextStyle(
-                            fontSize: 14,
-                            color: AppColors.textSecondary,
-                          ),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            // Город и регион
+                            Text(
+                              _buildLocationString(),
+                              style: const TextStyle(
+                                fontSize: 14,
+                                color: AppColors.textSecondary,
+                                fontWeight: FontWeight.w500,
+                              ),
+                            ),
+                            const SizedBox(height: 2),
+                            // Адрес
+                            Text(
+                              _getAddress(),
+                              style: const TextStyle(
+                                fontSize: 14,
+                                color: AppColors.textSecondary,
+                              ),
+                            ),
+                          ],
                         ),
                       ),
                     ],
@@ -477,6 +643,10 @@ class _JobDetailScreenState extends State<JobDetailScreen> {
     final phone = contactInfo?['phone'] ?? user['phone'] ?? '';
     final fullName = contactInfo?['fullName'] ?? user['fullName'] ?? 'Неизвестно';
 
+    // Проверяем разрешенные способы связи
+    final allowChat = jobData?['allowChat'] == true;
+    final allowPhone = jobData?['allowPhone'] == true;
+
     return Column(
       mainAxisSize: MainAxisSize.min,
       children: [
@@ -510,50 +680,103 @@ class _JobDetailScreenState extends State<JobDetailScreen> {
                   ),
                 ),
               ],
-              // Убрали отображение email
             ],
           ),
         ),
 
-        Row(
-          children: [
-            Expanded(
-              child: ElevatedButton.icon(
-                onPressed: () {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(content: Text('Переход в чаты будет реализован позже')),
-                  );
-                },
-                icon: const Icon(Icons.message, size: 20),
-                label: const Text('Написать'),
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: const Color(0xFF4FC3F7),
-                  foregroundColor: Colors.white,
-                  padding: const EdgeInsets.symmetric(vertical: 12),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(8),
+        // Показываем кнопки в зависимости от разрешений
+        if (allowChat && allowPhone) ...[
+          // Обе кнопки
+          Row(
+            children: [
+              Expanded(
+                child: ElevatedButton.icon(
+                  onPressed: () => _startChat(),
+                  icon: const Icon(Icons.message, size: 20),
+                  label: const Text('Написать'),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: const Color(0xFF4FC3F7),
+                    foregroundColor: Colors.white,
+                    padding: const EdgeInsets.symmetric(vertical: 12),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(8),
+                    ),
                   ),
                 ),
               ),
-            ),
-            const SizedBox(width: 12),
-            Expanded(
-              child: ElevatedButton.icon(
-                onPressed: phone.isNotEmpty ? () => _makePhoneCall(phone) : null,
-                icon: const Icon(Icons.phone, size: 20),
-                label: const Text('Позвонить'),
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: AppColors.primary,
-                  foregroundColor: Colors.white,
-                  padding: const EdgeInsets.symmetric(vertical: 12),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(8),
+              const SizedBox(width: 12),
+              Expanded(
+                child: ElevatedButton.icon(
+                  onPressed: phone.isNotEmpty ? () => _makePhoneCall(phone) : null,
+                  icon: const Icon(Icons.phone, size: 20),
+                  label: const Text('Позвонить'),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: AppColors.primary,
+                    foregroundColor: Colors.white,
+                    padding: const EdgeInsets.symmetric(vertical: 12),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(8),
+                    ),
                   ),
                 ),
               ),
+            ],
+          ),
+        ] else if (allowChat) ...[
+          // Только чат
+          SizedBox(
+            width: double.infinity,
+            child: ElevatedButton.icon(
+              onPressed: () => _startChat(),
+              icon: const Icon(Icons.message, size: 20),
+              label: const Text('Написать'),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: const Color(0xFF4FC3F7),
+                foregroundColor: Colors.white,
+                padding: const EdgeInsets.symmetric(vertical: 12),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(8),
+                ),
+              ),
             ),
-          ],
-        ),
+          ),
+        ] else if (allowPhone) ...[
+          // Только звонок
+          SizedBox(
+            width: double.infinity,
+            child: ElevatedButton.icon(
+              onPressed: phone.isNotEmpty ? () => _makePhoneCall(phone) : null,
+              icon: const Icon(Icons.phone, size: 20),
+              label: const Text('Позвонить'),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: AppColors.primary,
+                foregroundColor: Colors.white,
+                padding: const EdgeInsets.symmetric(vertical: 12),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(8),
+                ),
+              ),
+            ),
+          ),
+        ] else ...[
+          // Никакой способ связи не разрешен
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.all(16),
+            decoration: BoxDecoration(
+              color: Colors.grey[200],
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: const Text(
+              'Способы связи не указаны',
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                color: Colors.grey,
+                fontSize: 16,
+              ),
+            ),
+          ),
+        ],
       ],
     );
   }

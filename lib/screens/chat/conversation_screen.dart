@@ -1,13 +1,20 @@
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
+import '../../services/api/service.dart';
+import '../../providers/chat_provider.dart';
 
 class ConversationScreen extends StatefulWidget {
-  final String userId;
+  final String chatId;
+  final String otherUserId;
   final String userName;
+  final String? avatarUrl;
 
   const ConversationScreen({
     super.key,
-    required this.userId,
+    required this.chatId,
+    required this.otherUserId,
     required this.userName,
+    this.avatarUrl,
   });
 
   @override
@@ -16,38 +23,151 @@ class ConversationScreen extends StatefulWidget {
 
 class _ConversationScreenState extends State<ConversationScreen> {
   final TextEditingController _messageController = TextEditingController();
-  final List<Map<String, dynamic>> messages = [
-    {
-      'text': 'Привет! Пример Доброе утро',
-      'isMe': false,
-      'time': '10:00',
-    },
-    {
-      'text': 'Хотел уточнить, вы свободны 23 декабря утром?',
-      'isMe': false,
-      'time': '10:00',
-    },
-    {
-      'text': 'Привет и вам доброго утра!',
-      'isMe': true,
-      'time': '10:00',
-    },
-    {
-      'text': 'Да, я свободна. Мочу подъехать в 10:00 👍',
-      'isMe': true,
-      'time': '10:00',
-    },
-    {
-      'text': 'Отлично, договорились.\nСпасибо',
-      'isMe': false,
-      'time': '10:01',
-    },
-    {
-      'text': 'Да, я свободна Могу подъехать в 10:00 👍',
-      'isMe': true,
-      'time': '10:00',
-    },
-  ];
+  final ScrollController _scrollController = ScrollController();
+
+  List<Map<String, dynamic>> messages = [];
+  bool isLoading = true;
+  bool isSending = false;
+  String? currentUserId;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadMessages();
+    _getCurrentUserId();
+    _markChatAsRead();
+  }
+
+  @override
+  void dispose() {
+    _messageController.dispose();
+    _scrollController.dispose();
+    super.dispose();
+  }
+
+  Future<void> _markChatAsRead() async {
+    final chatProvider = Provider.of<ChatProvider>(context, listen: false);
+    chatProvider.markChatAsRead(widget.chatId);
+  }
+
+  Future<void> _getCurrentUserId() async {
+    try {
+      // Получаем ID текущего пользователя из профиля
+      final profile = await ApiService.user.getProfile();
+      setState(() {
+        currentUserId = profile?['id']?.toString();
+      });
+    } catch (e) {
+      print('Ошибка получения ID пользователя: $e');
+    }
+  }
+
+  Future<void> _loadMessages() async {
+    try {
+      setState(() {
+        isLoading = true;
+      });
+
+      final messagesData = await ApiService.chat.getChatMessages(widget.chatId);
+
+      // Преобразуем данные бэкенда в формат для UI
+      final List<Map<String, dynamic>> formattedMessages = messagesData.map((message) {
+        return {
+          'id': message['id'],
+          'text': message['content'] ?? '',
+          'isMe': message['senderId'] == currentUserId,
+          'time': _formatTime(message['createdAt']),
+          'senderId': message['senderId'],
+          'createdAt': message['createdAt'],
+        };
+      }).toList();
+
+      setState(() {
+        messages = formattedMessages;
+        isLoading = false;
+      });
+
+      // Прокручиваем к последнему сообщению
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (_scrollController.hasClients) {
+          _scrollController.animateTo(
+            _scrollController.position.maxScrollExtent,
+            duration: const Duration(milliseconds: 300),
+            curve: Curves.easeOut,
+          );
+        }
+      });
+    } catch (e) {
+      print('Ошибка загрузки сообщений: $e');
+      setState(() {
+        isLoading = false;
+      });
+    }
+  }
+
+  String _formatTime(String? createdAt) {
+    if (createdAt == null) return '';
+
+    try {
+      final dateTime = DateTime.parse(createdAt);
+      return '${dateTime.hour.toString().padLeft(2, '0')}:${dateTime.minute.toString().padLeft(2, '0')}';
+    } catch (e) {
+      return '';
+    }
+  }
+
+  Future<void> _sendMessage() async {
+    final messageText = _messageController.text.trim();
+    if (messageText.isEmpty || isSending) return;
+
+    setState(() {
+      isSending = true;
+    });
+
+    try {
+      // Отправляем сообщение через API
+      final newMessage = await ApiService.chat.sendMessage(widget.chatId, messageText);
+
+      if (newMessage != null) {
+        // Добавляем новое сообщение в список
+        setState(() {
+          messages.add({
+            'id': newMessage['id'],
+            'text': messageText,
+            'isMe': true,
+            'time': _formatTime(newMessage['createdAt']),
+            'senderId': newMessage['senderId'],
+            'createdAt': newMessage['createdAt'],
+          });
+        });
+
+        _messageController.clear();
+
+        // Прокручиваем к новому сообщению
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (_scrollController.hasClients) {
+            _scrollController.animateTo(
+              _scrollController.position.maxScrollExtent,
+              duration: const Duration(milliseconds: 300),
+              curve: Curves.easeOut,
+            );
+          }
+        });
+      }
+    } catch (e) {
+      print('Ошибка отправки сообщения: $e');
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Ошибка отправки сообщения: $e'),
+          backgroundColor: Colors.red,
+        ),
+      );
+    } finally {
+      setState(() {
+        isSending = false;
+      });
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -55,14 +175,19 @@ class _ConversationScreenState extends State<ConversationScreen> {
       appBar: AppBar(
         leading: IconButton(
           icon: const Icon(Icons.arrow_back),
-          onPressed: () => Navigator.pop(context),
+          onPressed: () => Navigator.pop(context, true), // Возвращаем true для обновления списка чатов
         ),
         title: Row(
           children: [
             CircleAvatar(
               radius: 20,
               backgroundColor: Colors.grey[300],
-              child: const Icon(Icons.person, size: 20),
+              backgroundImage: widget.avatarUrl != null
+                  ? NetworkImage(widget.avatarUrl!)
+                  : null,
+              child: widget.avatarUrl == null
+                  ? const Icon(Icons.person, size: 20)
+                  : null,
             ),
             const SizedBox(width: 12),
             Expanded(
@@ -77,7 +202,7 @@ class _ConversationScreenState extends State<ConversationScreen> {
                     ),
                   ),
                   const Text(
-                    'Сейчас',
+                    'Был(а) недавно',
                     style: TextStyle(
                       fontSize: 12,
                       color: Colors.grey,
@@ -92,13 +217,16 @@ class _ConversationScreenState extends State<ConversationScreen> {
           IconButton(
             icon: const Icon(Icons.call),
             onPressed: () {
-              // Make call
+              // TODO: Implement call functionality
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(content: Text('Звонки будут доступны в следующем обновлении')),
+              );
             },
           ),
           IconButton(
             icon: const Icon(Icons.more_vert),
             onPressed: () {
-              // Show more options
+              // TODO: Show more options
             },
           ),
         ],
@@ -107,7 +235,23 @@ class _ConversationScreenState extends State<ConversationScreen> {
         children: [
           // Messages List
           Expanded(
-            child: ListView.builder(
+            child: isLoading
+                ? const Center(
+              child: CircularProgressIndicator(color: Color(0xFF2E7D5F)),
+            )
+                : messages.isEmpty
+                ? const Center(
+              child: Text(
+                'Нет сообщений\nНачните общение!',
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  fontSize: 16,
+                  color: Colors.grey,
+                ),
+              ),
+            )
+                : ListView.builder(
+              controller: _scrollController,
               padding: const EdgeInsets.all(16),
               itemCount: messages.length,
               itemBuilder: (context, index) {
@@ -136,14 +280,20 @@ class _ConversationScreenState extends State<ConversationScreen> {
                 IconButton(
                   icon: const Icon(Icons.attach_file),
                   onPressed: () {
-                    // Attach file
+                    // TODO: Implement file attachment
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(content: Text('Прикрепление файлов будет доступно в следующем обновлении')),
+                    );
                   },
                 ),
 
                 IconButton(
                   icon: const Icon(Icons.camera_alt),
                   onPressed: () {
-                    // Take photo
+                    // TODO: Implement camera
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(content: Text('Камера будет доступна в следующем обновлении')),
+                    );
                   },
                 ),
 
@@ -151,27 +301,41 @@ class _ConversationScreenState extends State<ConversationScreen> {
                   child: TextField(
                     controller: _messageController,
                     decoration: const InputDecoration(
-                      hintText: 'Здесь вы можете отправить фото или сообщение',
+                      hintText: 'Напишите сообщение...',
                       border: InputBorder.none,
                     ),
+                    maxLines: null,
+                    onSubmitted: (_) => _sendMessage(),
                   ),
                 ),
 
                 IconButton(
                   icon: const Icon(Icons.mic),
                   onPressed: () {
-                    // Record voice
+                    // TODO: Implement voice recording
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(content: Text('Голосовые сообщения будут доступны в следующем обновлении')),
+                    );
                   },
                 ),
 
                 Container(
-                  decoration: const BoxDecoration(
-                    color: Color(0xFF2E7D5F),
+                  decoration: BoxDecoration(
+                    color: isSending ? Colors.grey : const Color(0xFF2E7D5F),
                     shape: BoxShape.circle,
                   ),
                   child: IconButton(
-                    icon: const Icon(Icons.send, color: Colors.white),
-                    onPressed: _sendMessage,
+                    icon: isSending
+                        ? const SizedBox(
+                      width: 20,
+                      height: 20,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2,
+                        color: Colors.white,
+                      ),
+                    )
+                        : const Icon(Icons.send, color: Colors.white),
+                    onPressed: isSending ? null : _sendMessage,
                   ),
                 ),
               ],
@@ -195,7 +359,12 @@ class _ConversationScreenState extends State<ConversationScreen> {
             CircleAvatar(
               radius: 16,
               backgroundColor: Colors.grey[300],
-              child: const Icon(Icons.person, size: 16),
+              backgroundImage: widget.avatarUrl != null
+                  ? NetworkImage(widget.avatarUrl!)
+                  : null,
+              child: widget.avatarUrl == null
+                  ? const Icon(Icons.person, size: 16)
+                  : null,
             ),
             const SizedBox(width: 8),
           ],
@@ -247,18 +416,5 @@ class _ConversationScreenState extends State<ConversationScreen> {
         ],
       ),
     );
-  }
-
-  void _sendMessage() {
-    if (_messageController.text.trim().isNotEmpty) {
-      setState(() {
-        messages.add({
-          'text': _messageController.text.trim(),
-          'isMe': true,
-          'time': '${DateTime.now().hour}:${DateTime.now().minute.toString().padLeft(2, '0')}',
-        });
-      });
-      _messageController.clear();
-    }
   }
 }
