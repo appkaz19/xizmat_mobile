@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../../services/api/service.dart';
+import '../../services/socket_service.dart';
 import '../../providers/chat_provider.dart';
 
 class ConversationScreen extends StatefulWidget {
@@ -36,13 +37,64 @@ class _ConversationScreenState extends State<ConversationScreen> {
     _loadMessages();
     _getCurrentUserId();
     _markChatAsRead();
+    _setupSocket();
   }
 
   @override
   void dispose() {
+    _cleanupSocket();
     _messageController.dispose();
     _scrollController.dispose();
     super.dispose();
+  }
+
+  Future<void> _setupSocket() async {
+    final socketService = SocketService.instance;
+
+    // Устанавливаем callback для новых сообщений в этом чате
+    socketService.onNewMessage = (messageData) {
+      if (messageData['chatId'] == widget.chatId) {
+        _handleNewMessage(messageData);
+      }
+    };
+
+    // Присоединяемся к чату
+    socketService.joinChat(widget.chatId);
+  }
+
+  void _cleanupSocket() {
+    final socketService = SocketService.instance;
+    socketService.leaveChat(widget.chatId);
+    socketService.onNewMessage = null;
+  }
+
+  void _handleNewMessage(Map<String, dynamic> messageData) {
+    print('ConversationScreen: Получено новое сообщение через сокет: $messageData');
+
+    // Проверяем, что сообщение не от текущего пользователя (чтобы не дублировать)
+    if (messageData['senderId'] != currentUserId) {
+      setState(() {
+        messages.add({
+          'id': messageData['id'],
+          'text': messageData['content'] ?? '',
+          'isMe': false,
+          'time': _formatTime(messageData['createdAt']),
+          'senderId': messageData['senderId'],
+          'createdAt': messageData['createdAt'],
+        });
+      });
+
+      // Автопрокрутка к новому сообщению
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (_scrollController.hasClients) {
+          _scrollController.animateTo(
+            _scrollController.position.maxScrollExtent,
+            duration: const Duration(milliseconds: 300),
+            curve: Curves.easeOut,
+          );
+        }
+      });
+    }
   }
 
   Future<void> _markChatAsRead() async {
@@ -124,38 +176,72 @@ class _ConversationScreenState extends State<ConversationScreen> {
       isSending = true;
     });
 
+    // Объявляем tempMessage вне блока try-catch
+    final tempMessage = {
+      'id': 'temp_${DateTime.now().millisecondsSinceEpoch}',
+      'text': messageText,
+      'isMe': true,
+      'time': _formatTime(DateTime.now().toIso8601String()),
+      'senderId': currentUserId,
+      'createdAt': DateTime.now().toIso8601String(),
+    };
+
     try {
-      // Отправляем сообщение через API
+      // Добавляем сообщение локально для мгновенного отображения
+      setState(() {
+        messages.add(tempMessage);
+      });
+
+      _messageController.clear();
+
+      // Прокручиваем к новому сообщению
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (_scrollController.hasClients) {
+          _scrollController.animateTo(
+            _scrollController.position.maxScrollExtent,
+            duration: const Duration(milliseconds: 300),
+            curve: Curves.easeOut,
+          );
+        }
+      });
+
+      // Отправляем через WebSocket для мгновенной доставки
+      final socketService = SocketService.instance;
+      if (socketService.isConnected) {
+        socketService.sendMessage(widget.chatId, messageText);
+      }
+
+      // Дублируем через HTTP API для надежности
       final newMessage = await ApiService.chat.sendMessage(widget.chatId, messageText);
 
       if (newMessage != null) {
-        // Добавляем новое сообщение в список
+        // Заменяем временное сообщение на реальное
         setState(() {
-          messages.add({
-            'id': newMessage['id'],
-            'text': messageText,
-            'isMe': true,
-            'time': _formatTime(newMessage['createdAt']),
-            'senderId': newMessage['senderId'],
-            'createdAt': newMessage['createdAt'],
-          });
-        });
-
-        _messageController.clear();
-
-        // Прокручиваем к новому сообщению
-        WidgetsBinding.instance.addPostFrameCallback((_) {
-          if (_scrollController.hasClients) {
-            _scrollController.animateTo(
-              _scrollController.position.maxScrollExtent,
-              duration: const Duration(milliseconds: 300),
-              curve: Curves.easeOut,
-            );
+          final tempIndex = messages.indexWhere((msg) => msg['id'] == tempMessage['id']);
+          if (tempIndex != -1) {
+            messages[tempIndex] = {
+              'id': newMessage['id'],
+              'text': messageText,
+              'isMe': true,
+              'time': _formatTime(newMessage['createdAt']),
+              'senderId': newMessage['senderId'],
+              'createdAt': newMessage['createdAt'],
+            };
           }
         });
+
+        // Обновляем ChatProvider
+        final chatProvider = Provider.of<ChatProvider>(context, listen: false);
+        chatProvider.addNewMessage(widget.chatId, newMessage);
       }
     } catch (e) {
       print('Ошибка отправки сообщения: $e');
+
+      // Удаляем временное сообщение при ошибке
+      setState(() {
+        messages.removeWhere((msg) => msg['id'] == tempMessage['id']);
+      });
+
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text('Ошибка отправки сообщения: $e'),

@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../services/api/service.dart';
+import '../services/socket_service.dart';
 
 class ChatProvider with ChangeNotifier {
   List<Map<String, dynamic>> _chats = [];
@@ -32,6 +33,7 @@ class ChatProvider with ChangeNotifier {
       notifyListeners();
 
       await loadChats();
+      await _initializeSocket();
       _isInitialized = true;
     } catch (e) {
       _error = e.toString();
@@ -39,6 +41,48 @@ class ChatProvider with ChangeNotifier {
     } finally {
       _isLoading = false;
       notifyListeners();
+    }
+  }
+
+  Future<void> _initializeSocket() async {
+    final socketService = SocketService.instance;
+
+    // Устанавливаем callback для новых сообщений
+    socketService.onNewMessage = (messageData) {
+      _handleNewSocketMessage(messageData);
+    };
+
+    // Подключаемся к сокету
+    await socketService.connect();
+  }
+
+  void _handleNewSocketMessage(Map<String, dynamic> messageData) {
+    print('ChatProvider: Обработка нового сообщения из сокета: $messageData');
+
+    final chatId = messageData['chatId']?.toString();
+    if (chatId == null) return;
+
+    // Находим чат и обновляем его
+    final chatIndex = _chats.indexWhere((chat) => chat['id'] == chatId);
+    if (chatIndex != -1) {
+      // Добавляем сообщение в начало списка
+      final messages = _chats[chatIndex]['messages'] as List<dynamic>;
+      messages.insert(0, messageData);
+
+      // Увеличиваем счетчик непрочитанных
+      final currentUnread = _chats[chatIndex]['unreadCount'] ?? 0;
+      _chats[chatIndex]['unreadCount'] = currentUnread + 1;
+
+      // Обновляем время последнего обновления
+      _chats[chatIndex]['updatedAt'] = messageData['createdAt'];
+
+      // Перемещаем чат в начало списка
+      final updatedChat = _chats.removeAt(chatIndex);
+      _chats.insert(0, updatedChat);
+
+      notifyListeners();
+
+      print('ChatProvider: Обновлен чат $chatId, новых непрочитанных: ${_chats[0]['unreadCount']}');
     }
   }
 
@@ -87,7 +131,7 @@ class ChatProvider with ChangeNotifier {
     updateChatUnreadCount(chatId, 0);
   }
 
-  // Добавляем новое сообщение и увеличиваем счетчик
+  // Добавляем новое сообщение через API (не через сокет)
   void addNewMessage(String chatId, Map<String, dynamic> message) {
     final chatIndex = _chats.indexWhere((chat) => chat['id'] == chatId);
     if (chatIndex != -1) {
@@ -95,10 +139,12 @@ class ChatProvider with ChangeNotifier {
       final messages = _chats[chatIndex]['messages'] as List<dynamic>;
       messages.insert(0, message);
 
-      // Увеличиваем счетчик непрочитанных (если сообщение не от текущего пользователя)
-      // Здесь можно добавить проверку на senderId если нужно
-      final currentUnread = _chats[chatIndex]['unreadCount'] ?? 0;
-      _chats[chatIndex]['unreadCount'] = currentUnread + 1;
+      // Обновляем время
+      _chats[chatIndex]['updatedAt'] = message['createdAt'];
+
+      // Перемещаем чат в начало списка
+      final updatedChat = _chats.removeAt(chatIndex);
+      _chats.insert(0, updatedChat);
 
       notifyListeners();
     }
@@ -113,5 +159,12 @@ class ChatProvider with ChangeNotifier {
   void clearError() {
     _error = null;
     notifyListeners();
+  }
+
+  @override
+  void dispose() {
+    // Отключаем сокет при удалении провайдера
+    SocketService.instance.dispose();
+    super.dispose();
   }
 }
