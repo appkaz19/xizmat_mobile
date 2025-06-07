@@ -16,10 +16,22 @@ class SocketService {
 
   bool get isConnected => _isConnected;
 
-  // Callbacks для разных событий
-  Function(Map<String, dynamic>)? onNewMessage;
+  // Слушатели для разных событий
+  final List<void Function(Map<String, dynamic>)> _newMessageListeners = [];
   Function()? onConnect;
   Function()? onDisconnect;
+
+  /// Добавить слушатель новых сообщений
+  void addNewMessageListener(void Function(Map<String, dynamic>) listener) {
+    if (!_newMessageListeners.contains(listener)) {
+      _newMessageListeners.add(listener);
+    }
+  }
+
+  /// Удалить слушатель новых сообщений
+  void removeNewMessageListener(void Function(Map<String, dynamic>) listener) {
+    _newMessageListeners.remove(listener);
+  }
 
   Future<void> connect() async {
     if (_socket != null && _isConnected) {
@@ -72,13 +84,18 @@ class SocketService {
       _socket!.on('newMessage', (data) {
         print('📨 RAW данные из newMessage: $data');
         print('📨 Тип данных: ${data.runtimeType}');
+        Map<String, dynamic>? parsed;
         if (data is Map<String, dynamic>) {
-          print('📨 Обработка сообщения: $data');
-          onNewMessage?.call(data);
+          parsed = data;
         } else if (data is Map) {
-          final convertedData = Map<String, dynamic>.from(data);
-          print('📨 Конвертированные данные: $convertedData');
-          onNewMessage?.call(convertedData);
+          parsed = Map<String, dynamic>.from(data);
+        }
+
+        if (parsed != null) {
+          print('📨 Обработка сообщения: $parsed');
+          for (final listener in List.from(_newMessageListeners)) {
+            listener(parsed);
+          }
         } else {
           print('📨 Неожиданный формат данных: $data');
         }
@@ -151,7 +168,7 @@ class SocketService {
 
   void dispose() {
     disconnect();
-    onNewMessage = null;
+    _newMessageListeners.clear();
     onConnect = null;
     onDisconnect = null;
   }
