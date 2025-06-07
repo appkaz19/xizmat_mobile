@@ -52,16 +52,6 @@ class ChatProvider with ChangeNotifier {
       _handleNewSocketMessage(messageData);
     };
 
-    // При подключении к сокету присоединяемся ко всем чату
-    socketService.onConnect = () {
-      for (final chat in _chats) {
-        final chatId = chat['id']?.toString();
-        if (chatId != null) {
-          socketService.joinChat(chatId);
-        }
-      }
-    };
-
     // Подключаемся к сокету
     await socketService.connect();
   }

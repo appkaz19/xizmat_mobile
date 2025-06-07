@@ -133,22 +133,11 @@ class SocketService {
   }
 
   void sendMessage(String chatId, String content) {
-    if (_socket != null && _isConnected) {
-      print('📤 Отправляем сообщение через WebSocket');
-      print('📤 ChatId: $chatId, Content: $content');
-      print('📤 Socket подключен: $_isConnected');
-
-      // Точно как в документации
-      _socket!.emit('sendMessage', {
-        'chatId': chatId,
-        'content': content,
-      });
-
-      print('📤 Событие sendMessage отправлено');
-    } else {
-      print('❌ Невозможно отправить сообщение - нет подключения');
-      print('❌ Socket: $_socket, Connected: $_isConnected');
-    }
+    // УБРАЛИ отправку через WebSocket!
+    // Сообщения отправляются ТОЛЬКО через HTTP API
+    // WebSocket используется только для получения сообщений
+    print('📤 WebSocket sendMessage вызван, но отправка отключена (используется только HTTP API)');
+    print('📤 ChatId: $chatId, Content: $content');
   }
 
   void disconnect() {
