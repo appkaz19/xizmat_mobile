@@ -11,47 +11,20 @@ class ChatScreen extends StatefulWidget {
 }
 
 class _ChatScreenState extends State<ChatScreen> {
-  List<Map<String, dynamic>> conversations = [];
-  bool isLoading = true;
-  String? error;
-
   @override
   void initState() {
     super.initState();
-    _loadChats();
+    // Инициализируем ChatProvider при первом открытии
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _initializeChatProvider();
+    });
   }
 
-  Future<void> _loadChats() async {
+  Future<void> _initializeChatProvider() async {
     final chatProvider = Provider.of<ChatProvider>(context, listen: false);
-    await chatProvider.loadChats();
-
-    setState(() {
-      conversations = chatProvider.chats.map((chat) {
-        // Определяем собеседника (не текущего пользователя)
-        final userA = chat['userA'] as Map<String, dynamic>?;
-        final userB = chat['userB'] as Map<String, dynamic>?;
-
-        // Логика определения собеседника зависит от того, как бэкенд возвращает данные
-        final otherUser = userA; // Упрощенно, нужно будет уточнить логику
-
-        final messages = chat['messages'] as List<dynamic>? ?? [];
-        final lastMessage = messages.isNotEmpty ? messages.first : null;
-
-        return {
-          'id': chat['id'],
-          'chatId': chat['id'], // ID чата для API вызовов
-          'name': otherUser?['fullName'] ?? otherUser?['phone'] ?? 'Неизвестный пользователь',
-          'lastMessage': lastMessage?['content'] ?? 'Нет сообщений',
-          'time': _formatTime(lastMessage?['createdAt']),
-          'isOnline': false, // Статус онлайн не реализован в бэкенде
-          'unreadCount': chat['unreadCount'] ?? 0,
-          'avatar': otherUser?['avatarUrl'], // Если есть поле avatarUrl в User
-          'otherUserId': otherUser?['id'], // ID собеседника
-        };
-      }).toList();
-      isLoading = false;
-      error = null;
-    });
+    if (!chatProvider.isInitialized) {
+      await chatProvider.initialize();
+    }
   }
 
   String _formatTime(String? createdAt) {
@@ -79,7 +52,6 @@ class _ChatScreenState extends State<ChatScreen> {
   Future<void> _refreshChats() async {
     final chatProvider = Provider.of<ChatProvider>(context, listen: false);
     await chatProvider.refresh();
-    await _loadChats();
   }
 
   @override
@@ -118,173 +90,202 @@ class _ChatScreenState extends State<ChatScreen> {
   }
 
   Widget _buildChatsList() {
-    if (isLoading) {
-      return const Center(
-        child: CircularProgressIndicator(color: Color(0xFF2E7D5F)),
-      );
-    }
+    // ✅ ВАЖНО: Consumer слушает изменения в ChatProvider
+    return Consumer<ChatProvider>(
+      builder: (context, chatProvider, child) {
+        if (chatProvider.isLoading && chatProvider.chats.isEmpty) {
+          return const Center(
+            child: CircularProgressIndicator(color: Color(0xFF2E7D5F)),
+          );
+        }
 
-    if (error != null) {
-      return Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            const Icon(Icons.error_outline, size: 64, color: Colors.grey),
-            const SizedBox(height: 16),
-            Text(
-              'Ошибка загрузки чатов',
-              style: TextStyle(fontSize: 18, color: Colors.grey[600]),
-            ),
-            const SizedBox(height: 8),
-            Text(
-              error!,
-              style: TextStyle(fontSize: 14, color: Colors.grey[500]),
-              textAlign: TextAlign.center,
-            ),
-            const SizedBox(height: 16),
-            ElevatedButton(
-              onPressed: _refreshChats,
-              style: ElevatedButton.styleFrom(
-                backgroundColor: const Color(0xFF2E7D5F),
-                foregroundColor: Colors.white,
-              ),
-              child: const Text('Повторить'),
-            ),
-          ],
-        ),
-      );
-    }
-
-    if (conversations.isEmpty) {
-      return Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            const Icon(Icons.chat_bubble_outline, size: 64, color: Colors.grey),
-            const SizedBox(height: 16),
-            Text(
-              'У вас пока нет чатов',
-              style: TextStyle(fontSize: 18, color: Colors.grey[600]),
-            ),
-            const SizedBox(height: 8),
-            Text(
-              'Начните общаться с другими пользователями',
-              style: TextStyle(fontSize: 14, color: Colors.grey[500]),
-            ),
-          ],
-        ),
-      );
-    }
-
-    return RefreshIndicator(
-      onRefresh: _refreshChats,
-      color: const Color(0xFF2E7D5F),
-      child: ListView.builder(
-        itemCount: conversations.length,
-        itemBuilder: (context, index) {
-          final conversation = conversations[index];
-          return ListTile(
-            leading: Stack(
+        if (chatProvider.error != null) {
+          return Center(
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                CircleAvatar(
-                  radius: 28,
-                  backgroundColor: Colors.grey[300],
-                  backgroundImage: conversation['avatar'] != null
-                      ? NetworkImage(conversation['avatar'])
-                      : null,
-                  child: conversation['avatar'] == null
-                      ? const Icon(Icons.person, color: Colors.grey)
-                      : null,
+                const Icon(Icons.error_outline, size: 64, color: Colors.grey),
+                const SizedBox(height: 16),
+                Text(
+                  'Ошибка загрузки чатов',
+                  style: TextStyle(fontSize: 18, color: Colors.grey[600]),
                 ),
-                if (conversation['isOnline'])
-                  Positioned(
-                    bottom: 0,
-                    right: 0,
-                    child: Container(
-                      width: 16,
-                      height: 16,
-                      decoration: BoxDecoration(
-                        color: Colors.green,
-                        shape: BoxShape.circle,
-                        border: Border.all(color: Colors.white, width: 2),
-                      ),
-                    ),
+                const SizedBox(height: 8),
+                Text(
+                  chatProvider.error!,
+                  style: TextStyle(fontSize: 14, color: Colors.grey[500]),
+                  textAlign: TextAlign.center,
+                ),
+                const SizedBox(height: 16),
+                ElevatedButton(
+                  onPressed: _refreshChats,
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: const Color(0xFF2E7D5F),
+                    foregroundColor: Colors.white,
                   ),
+                  child: const Text('Повторить'),
+                ),
               ],
             ),
-            title: Text(
-              conversation['name'],
-              style: const TextStyle(
-                fontWeight: FontWeight.w600,
-              ),
-            ),
-            subtitle: Text(
-              conversation['lastMessage'],
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: TextStyle(
-                color: conversation['unreadCount'] > 0
-                    ? Colors.black
-                    : Colors.grey[600],
-                fontWeight: conversation['unreadCount'] > 0
-                    ? FontWeight.w500
-                    : FontWeight.normal,
-              ),
-            ),
-            trailing: Column(
+          );
+        }
+
+        if (chatProvider.chats.isEmpty) {
+          return Center(
+            child: Column(
               mainAxisAlignment: MainAxisAlignment.center,
-              crossAxisAlignment: CrossAxisAlignment.end,
               children: [
+                const Icon(Icons.chat_bubble_outline, size: 64, color: Colors.grey),
+                const SizedBox(height: 16),
                 Text(
-                  conversation['time'],
+                  'У вас пока нет чатов',
+                  style: TextStyle(fontSize: 18, color: Colors.grey[600]),
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  'Начните общаться с другими пользователями',
+                  style: TextStyle(fontSize: 14, color: Colors.grey[500]),
+                ),
+              ],
+            ),
+          );
+        }
+
+        // Преобразуем данные из ChatProvider для отображения
+        final conversations = chatProvider.chats.map((chat) {
+          final userA = chat['userA'] as Map<String, dynamic>?;
+          final userB = chat['userB'] as Map<String, dynamic>?;
+
+          // Логика определения собеседника зависит от того, как бэкенд возвращает данные
+          final otherUser = userA; // Упрощенно, нужно будет уточнить логику
+
+          final messages = chat['messages'] as List<dynamic>? ?? [];
+          final lastMessage = messages.isNotEmpty ? messages.first : null;
+
+          return {
+            'id': chat['id'],
+            'chatId': chat['id'],
+            'name': otherUser?['fullName'] ?? otherUser?['phone'] ?? 'Неизвестный пользователь',
+            'lastMessage': lastMessage?['content'] ?? 'Нет сообщений',
+            'time': _formatTime(lastMessage?['createdAt']),
+            'isOnline': false,
+            'unreadCount': chat['unreadCount'] ?? 0,
+            'avatar': otherUser?['avatarUrl'],
+            'otherUserId': otherUser?['id'],
+          };
+        }).toList();
+
+        return RefreshIndicator(
+          onRefresh: _refreshChats,
+          color: const Color(0xFF2E7D5F),
+          child: ListView.builder(
+            itemCount: conversations.length,
+            itemBuilder: (context, index) {
+              final conversation = conversations[index];
+              return ListTile(
+                leading: Stack(
+                  children: [
+                    CircleAvatar(
+                      radius: 28,
+                      backgroundColor: Colors.grey[300],
+                      backgroundImage: conversation['avatar'] != null
+                          ? NetworkImage(conversation['avatar'])
+                          : null,
+                      child: conversation['avatar'] == null
+                          ? const Icon(Icons.person, color: Colors.grey)
+                          : null,
+                    ),
+                    if (conversation['isOnline'])
+                      Positioned(
+                        bottom: 0,
+                        right: 0,
+                        child: Container(
+                          width: 16,
+                          height: 16,
+                          decoration: BoxDecoration(
+                            color: Colors.green,
+                            shape: BoxShape.circle,
+                            border: Border.all(color: Colors.white, width: 2),
+                          ),
+                        ),
+                      ),
+                  ],
+                ),
+                title: Text(
+                  conversation['name'],
+                  style: const TextStyle(
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+                subtitle: Text(
+                  conversation['lastMessage'],
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
                   style: TextStyle(
                     color: conversation['unreadCount'] > 0
-                        ? const Color(0xFF2E7D5F)
+                        ? Colors.black
                         : Colors.grey[600],
-                    fontSize: 12,
+                    fontWeight: conversation['unreadCount'] > 0
+                        ? FontWeight.w500
+                        : FontWeight.normal,
                   ),
                 ),
-                if (conversation['unreadCount'] > 0) ...[
-                  const SizedBox(height: 4),
-                  Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                    decoration: const BoxDecoration(
-                      color: Color(0xFF2E7D5F),
-                      shape: BoxShape.circle,
-                    ),
-                    child: Text(
-                      conversation['unreadCount'].toString(),
-                      style: const TextStyle(
-                        color: Colors.white,
+                trailing: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  crossAxisAlignment: CrossAxisAlignment.end,
+                  children: [
+                    Text(
+                      conversation['time'],
+                      style: TextStyle(
+                        color: conversation['unreadCount'] > 0
+                            ? const Color(0xFF2E7D5F)
+                            : Colors.grey[600],
                         fontSize: 12,
-                        fontWeight: FontWeight.bold,
                       ),
                     ),
-                  ),
-                ],
-              ],
-            ),
-            onTap: () async {
-              final result = await Navigator.push(
-                context,
-                MaterialPageRoute(
-                  builder: (context) => ConversationScreen(
-                    chatId: conversation['chatId'],
-                    otherUserId: conversation['otherUserId'],
-                    userName: conversation['name'],
-                    avatarUrl: conversation['avatar'],
-                  ),
+                    if (conversation['unreadCount'] > 0) ...[
+                      const SizedBox(height: 4),
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                        decoration: const BoxDecoration(
+                          color: Color(0xFF2E7D5F),
+                          shape: BoxShape.circle,
+                        ),
+                        child: Text(
+                          conversation['unreadCount'].toString(),
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontSize: 12,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ],
                 ),
-              );
+                onTap: () async {
+                  final result = await Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (context) => ConversationScreen(
+                        chatId: conversation['chatId'],
+                        otherUserId: conversation['otherUserId'],
+                        userName: conversation['name'],
+                        avatarUrl: conversation['avatar'],
+                      ),
+                    ),
+                  );
 
-              // Обновляем список чатов если вернулись из разговора
-              if (result == true) {
-                _refreshChats();
-              }
+                  // Обновляем список чатов если вернулись из разговора
+                  if (result == true) {
+                    _refreshChats();
+                  }
+                },
+              );
             },
-          );
-        },
-      ),
+          ),
+        );
+      },
     );
   }
 
