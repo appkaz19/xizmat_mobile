@@ -5,6 +5,7 @@ class SocketService {
   static SocketService? _instance;
   IO.Socket? _socket;
   bool _isConnected = false;
+  final Set<String> _pendingChats = {};
 
   // Singleton pattern
   static SocketService get instance {
@@ -62,6 +63,11 @@ class SocketService {
       _socket!.onConnect((_) {
         print('✅ WebSocket подключен по HTTP на порту 6969');
         _isConnected = true;
+        for (final chatId in _pendingChats) {
+          _socket!.emit('joinChat', chatId);
+          print('🔗 Авто join к чату после подключения: $chatId');
+        }
+        _pendingChats.clear();
         onConnect?.call();
       });
 
@@ -138,6 +144,8 @@ class SocketService {
     } else {
       print('❌ Невозможно присоединиться к чату - нет подключения');
       print('❌ Socket: $_socket, Connected: $_isConnected');
+      _pendingChats.add(chatId);
+      print('🔗 Чат $chatId добавлен в очередь на подключение');
     }
   }
 
@@ -147,6 +155,7 @@ class SocketService {
       // В документации нет leaveChat, но логично что такое событие должно быть
       _socket!.emit('leaveChat', chatId);
     }
+    _pendingChats.remove(chatId);
   }
 
   void sendMessage(String chatId, String content) {
