@@ -31,7 +31,6 @@ class XizmatApp extends StatelessWidget {
   }
 }
 
-// Инициализатор - загружает избранное при старте
 class AppInitializer extends StatefulWidget {
   const AppInitializer({super.key});
 
@@ -43,11 +42,10 @@ class _AppInitializerState extends State<AppInitializer> {
   @override
   void initState() {
     super.initState();
-    _initializeApp();
+    Future.microtask(() => _initializeApp());
   }
 
   Future<void> _initializeApp() async {
-    // Инициализируем избранное при запуске приложения
     final favoritesProvider = Provider.of<FavoritesProvider>(context, listen: false);
     await favoritesProvider.initialize();
   }

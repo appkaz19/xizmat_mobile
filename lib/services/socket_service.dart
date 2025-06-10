@@ -50,7 +50,7 @@ class SocketService {
       print('Подключение к WebSocket по HTTP на порту 6969...');
 
       _socket = IO.io(
-        'http://uzxizmat.uz:6969', // ИСПРАВИЛИ: http вместо https
+        'http://192.168.161.25:6969', // ИСПРАВИЛИ: http вместо https
         IO.OptionBuilder()
             .setTransports(['websocket'])
             .setExtraHeaders({'Content-Type': 'application/json'}) // Как в документации

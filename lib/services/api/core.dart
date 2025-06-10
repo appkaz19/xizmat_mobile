@@ -4,7 +4,7 @@ import 'dart:io';
 import 'package:shared_preferences/shared_preferences.dart';
 
 class CoreApi {
-  static const _baseUrl = 'uzxizmat.uz';
+  static const _baseUrl = '192.168.161.25:6969';
   static const _basePath = '/api';
 
   static Future<String?> _getToken() async {
@@ -23,7 +23,7 @@ class CoreApi {
     final client = HttpClient();
     client.badCertificateCallback = (cert, host, port) => true;
 
-    final uri = Uri.https(_baseUrl, '$_basePath$path', query);
+    final uri = Uri.http(_baseUrl, '$_basePath$path', query);
     print('➡ ${method.toUpperCase()} ${uri.toString()}');
     final request = await client.openUrl(method, uri);
 
