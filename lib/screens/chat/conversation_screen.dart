@@ -52,16 +52,29 @@ class _ConversationScreenState extends State<ConversationScreen> {
   Future<void> _setupSocket() async {
     final socketService = SocketService.instance;
 
+    print('🔗 ConversationScreen: Настройка сокета для чата ${widget.chatId}');
+    print('🔗 ConversationScreen: Socket подключен: ${socketService.isConnected}');
+
     // Регистрируем слушатель для сообщений этого чата
     _socketListener ??= (messageData) {
+      print('📨 ConversationScreen: Получено WebSocket событие: $messageData');
+      print('📨 ConversationScreen: chatId из события: ${messageData['chatId']}');
+      print('📨 ConversationScreen: наш chatId: ${widget.chatId}');
+
       if (messageData['chatId'] == widget.chatId) {
+        print('📨 ConversationScreen: ID совпадают, обрабатываем сообщение');
         _handleNewMessage(messageData);
+      } else {
+        print('📨 ConversationScreen: ID не совпадают, игнорируем');
       }
     };
     socketService.addNewMessageListener(_socketListener!);
+    print('🔗 ConversationScreen: Слушатель WebSocket добавлен');
 
     // Присоединяемся к чату
+    print('🔗 ConversationScreen: Присоединяемся к чату ${widget.chatId}');
     socketService.joinChat(widget.chatId);
+    print('🔗 ConversationScreen: joinChat выполнен');
   }
 
   void _cleanupSocket() {
@@ -212,31 +225,49 @@ class _ConversationScreenState extends State<ConversationScreen> {
       // Отправляем через WebSocket для мгновенной доставки
       final socketService = SocketService.instance;
       if (socketService.isConnected) {
+        print('📤 Отправляем ТОЛЬКО через WebSocket для мгновенной доставки');
         socketService.sendMessage(widget.chatId, messageText);
-      }
 
-      // Дублируем через HTTP API для надежности
-      final newMessage = await ApiService.chat.sendMessage(widget.chatId, messageText);
-
-      if (newMessage != null) {
-        // Заменяем временное сообщение на реальное
-        setState(() {
-          final tempIndex = messages.indexWhere((msg) => msg['id'] == tempMessage['id']);
-          if (tempIndex != -1) {
-            messages[tempIndex] = {
-              'id': newMessage['id'],
-              'text': messageText,
-              'isMe': true,
-              'time': _formatTime(newMessage['createdAt']),
-              'senderId': newMessage['senderId'],
-              'createdAt': newMessage['createdAt'],
-            };
-          }
+        // Имитируем успешную отправку через WebSocket
+        // (в реальности сообщение сохранится в БД через WebSocket gateway)
+        Future.delayed(Duration(milliseconds: 100), () {
+          // Заменяем временное сообщение на "отправленное"
+          setState(() {
+            final tempIndex = messages.indexWhere((msg) => msg['id'] == tempMessage['id']);
+            if (tempIndex != -1) {
+              messages[tempIndex] = {
+                ...tempMessage,
+                'id': 'ws_${DateTime.now().millisecondsSinceEpoch}', // Временный ID
+              };
+            }
+          });
         });
+      } else {
+        print('❌ WebSocket не подключен, отправляем через HTTP как fallback');
 
-        // Обновляем ChatProvider
-        final chatProvider = Provider.of<ChatProvider>(context, listen: false);
-        chatProvider.addNewMessage(widget.chatId, newMessage);
+        // Fallback: HTTP API если WebSocket не работает
+        final newMessage = await ApiService.chat.sendMessage(widget.chatId, messageText);
+
+        if (newMessage != null) {
+          // Заменяем временное сообщение на реальное с ID из БД
+          setState(() {
+            final tempIndex = messages.indexWhere((msg) => msg['id'] == tempMessage['id']);
+            if (tempIndex != -1) {
+              messages[tempIndex] = {
+                'id': newMessage['id'],
+                'text': messageText,
+                'isMe': true,
+                'time': _formatTime(newMessage['createdAt']),
+                'senderId': newMessage['senderId'],
+                'createdAt': newMessage['createdAt'],
+              };
+            }
+          });
+
+          // Обновляем ChatProvider только если отправляли через HTTP
+          final chatProvider = Provider.of<ChatProvider>(context, listen: false);
+          chatProvider.addNewMessage(widget.chatId, newMessage);
+        }
       }
     } catch (e) {
       print('Ошибка отправки сообщения: $e');

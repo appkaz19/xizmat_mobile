@@ -50,11 +50,11 @@ class SocketService {
       print('Подключение к WebSocket по HTTP на порту 6969...');
 
       _socket = IO.io(
-        'http://192.168.161.25:6969', // ИСПРАВИЛИ: http вместо https
+        'http://192.168.161.227:6969',
         IO.OptionBuilder()
             .setTransports(['websocket'])
-            .setExtraHeaders({'Content-Type': 'application/json'}) // Как в документации
-            .setAuth({'token': token}) // Точно как в документации
+            .setExtraHeaders({'Content-Type': 'application/json'})
+            .setAuth({'token': token})
             .enableAutoConnect()
             .setTimeout(10000)
             .build(),
@@ -86,10 +86,12 @@ class SocketService {
         print('🔥 WebSocket ошибка: $error');
       });
 
-      // Слушаем новые сообщения (точно как в документации)
+      // Слушаем новые сообщения
       _socket!.on('newMessage', (data) {
-        print('📨 RAW данные из newMessage: $data');
-        print('📨 Тип данных: ${data.runtimeType}');
+        print('📨 SocketService: RAW данные из newMessage: $data');
+        print('📨 SocketService: Тип данных: ${data.runtimeType}');
+        print('📨 SocketService: Количество слушателей: ${_newMessageListeners.length}');
+
         Map<String, dynamic>? parsed;
         if (data is Map<String, dynamic>) {
           parsed = data;
@@ -98,27 +100,20 @@ class SocketService {
         }
 
         if (parsed != null) {
-          print('📨 Обработка сообщения: $parsed');
+          print('📨 SocketService: Обработка сообщения: $parsed');
+          print('📨 SocketService: Уведомляем ${_newMessageListeners.length} слушателей');
+
           for (final listener in List.from(_newMessageListeners)) {
-            listener(parsed);
+            try {
+              listener(parsed);
+              print('📨 SocketService: Слушатель уведомлен успешно');
+            } catch (e) {
+              print('📨 SocketService: Неожиданный формат данных: $data');
+            }
           }
         } else {
           print('📨 Неожиданный формат данных: $data');
         }
-      });
-
-      // Добавим отладочные события
-      _socket!.on('connect', (_) {
-        print('🔗 Socket.IO connect событие');
-      });
-
-      _socket!.on('disconnect', (reason) {
-        print('💔 Socket.IO disconnect: $reason');
-      });
-
-      // Слушаем все события для отладки
-      _socket!.onAny((event, data) {
-        print('🔥 Socket событие: $event, данные: $data');
       });
 
       _socket!.connect();
@@ -135,15 +130,10 @@ class SocketService {
   void joinChat(String chatId) {
     if (_socket != null && _isConnected) {
       print('🔗 Присоединяемся к чату: $chatId');
-      print('🔗 Socket подключен: $_isConnected');
-      print('🔗 Socket состояние: ${_socket!.connected}');
-      _socket!.emit('joinChat', chatId); // Точно как в документации
-
-      // Добавим подтверждение что событие отправлено
+      _socket!.emit('joinChat', chatId);
       print('🔗 Событие joinChat отправлено для чата: $chatId');
     } else {
       print('❌ Невозможно присоединиться к чату - нет подключения');
-      print('❌ Socket: $_socket, Connected: $_isConnected');
       _pendingChats.add(chatId);
       print('🔗 Чат $chatId добавлен в очередь на подключение');
     }
@@ -152,18 +142,25 @@ class SocketService {
   void leaveChat(String chatId) {
     if (_socket != null && _isConnected) {
       print('👋 Покидаем чат: $chatId');
-      // В документации нет leaveChat, но логично что такое событие должно быть
       _socket!.emit('leaveChat', chatId);
     }
     _pendingChats.remove(chatId);
   }
 
   void sendMessage(String chatId, String content) {
-    // УБРАЛИ отправку через WebSocket!
-    // Сообщения отправляются ТОЛЬКО через HTTP API
-    // WebSocket используется только для получения сообщений
-    print('📤 WebSocket sendMessage вызван, но отправка отключена (используется только HTTP API)');
-    print('📤 ChatId: $chatId, Content: $content');
+    if (_socket != null && _isConnected) {
+      print('📤 Отправляем сообщение через WebSocket');
+      print('📤 ChatId: $chatId, Content: $content');
+
+      _socket!.emit('sendMessage', {
+        'chatId': chatId,
+        'content': content,
+      });
+
+      print('📤 Сообщение отправлено через WebSocket');
+    } else {
+      print('❌ Не могу отправить сообщение - нет WebSocket соединения');
+    }
   }
 
   void disconnect() {

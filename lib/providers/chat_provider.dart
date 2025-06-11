@@ -127,8 +127,21 @@ class ChatProvider with ChangeNotifier {
   }
 
   // Сбрасываем счетчик непрочитанных для чата (когда пользователь заходит в чат)
-  void markChatAsRead(String chatId) {
-    updateChatUnreadCount(chatId, 0);
+  Future<void> markChatAsRead(String chatId) async {
+    try {
+      // Отправляем запрос на бэкенд
+      final success = await ApiService.chat.markChatAsRead(chatId);
+
+      if (success) {
+        // Обновляем локальное состояние
+        updateChatUnreadCount(chatId, 0);
+        print('ChatProvider: Чат $chatId отмечен как прочитанный');
+      } else {
+        print('ChatProvider: Ошибка отметки чата $chatId как прочитанного');
+      }
+    } catch (e) {
+      print('ChatProvider: Ошибка при отметке чата как прочитанного: $e');
+    }
   }
 
   // Добавляем новое сообщение через API (не через сокет)
