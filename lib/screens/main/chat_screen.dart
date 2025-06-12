@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../../providers/chat_provider.dart';
+import '../../services/api/service.dart';
 import '../chat/conversation_screen.dart';
 
 class ChatScreen extends StatefulWidget {
@@ -90,7 +91,6 @@ class _ChatScreenState extends State<ChatScreen> {
   }
 
   Widget _buildChatsList() {
-    // ✅ ВАЖНО: Consumer слушает изменения в ChatProvider
     return Consumer<ChatProvider>(
       builder: (context, chatProvider, child) {
         if (chatProvider.isLoading && chatProvider.chats.isEmpty) {
@@ -135,7 +135,8 @@ class _ChatScreenState extends State<ChatScreen> {
             child: Column(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                const Icon(Icons.chat_bubble_outline, size: 64, color: Colors.grey),
+                const Icon(
+                    Icons.chat_bubble_outline, size: 64, color: Colors.grey),
                 const SizedBox(height: 16),
                 Text(
                   'У вас пока нет чатов',
@@ -151,135 +152,154 @@ class _ChatScreenState extends State<ChatScreen> {
           );
         }
 
-        // Преобразуем данные из ChatProvider для отображения
-        final conversations = chatProvider.chats.map((chat) {
-          final userA = chat['userA'] as Map<String, dynamic>?;
-          final userB = chat['userB'] as Map<String, dynamic>?;
-
-          // Логика определения собеседника зависит от того, как бэкенд возвращает данные
-          final otherUser = userA; // Упрощенно, нужно будет уточнить логику
-
-          final messages = chat['messages'] as List<dynamic>? ?? [];
-          final lastMessage = messages.isNotEmpty ? messages.first : null;
-
-          return {
-            'id': chat['id'],
-            'chatId': chat['id'],
-            'name': otherUser?['fullName'] ?? otherUser?['phone'] ?? 'Неизвестный пользователь',
-            'lastMessage': lastMessage?['content'] ?? 'Нет сообщений',
-            'time': _formatTime(lastMessage?['createdAt']),
-            'isOnline': false,
-            'unreadCount': chat['unreadCount'] ?? 0,
-            'avatar': otherUser?['avatarUrl'],
-            'otherUserId': otherUser?['id'],
-          };
-        }).toList();
-
         return RefreshIndicator(
           onRefresh: _refreshChats,
           color: const Color(0xFF2E7D5F),
-          child: ListView.builder(
-            itemCount: conversations.length,
-            itemBuilder: (context, index) {
-              final conversation = conversations[index];
-              return ListTile(
-                leading: Stack(
-                  children: [
-                    CircleAvatar(
-                      radius: 28,
-                      backgroundColor: Colors.grey[300],
-                      backgroundImage: conversation['avatar'] != null
-                          ? NetworkImage(conversation['avatar'])
-                          : null,
-                      child: conversation['avatar'] == null
-                          ? const Icon(Icons.person, color: Colors.grey)
-                          : null,
-                    ),
-                    if (conversation['isOnline'])
-                      Positioned(
-                        bottom: 0,
-                        right: 0,
-                        child: Container(
-                          width: 16,
-                          height: 16,
-                          decoration: BoxDecoration(
-                            color: Colors.green,
-                            shape: BoxShape.circle,
-                            border: Border.all(color: Colors.white, width: 2),
-                          ),
+          child: FutureBuilder<String?>(
+            future: _getCurrentUserId(), // Получаем ID текущего пользователя
+            builder: (context, userSnapshot) {
+              if (!userSnapshot.hasData) {
+                return const Center(child: CircularProgressIndicator());
+              }
+
+              final currentUserId = userSnapshot.data;
+
+              // ✅ ИСПРАВЛЕНО: Логика определения собеседника
+              final conversations = chatProvider.chats.map((chat) {
+                final userA = chat['userA'] as Map<String, dynamic>?;
+                final userB = chat['userB'] as Map<String, dynamic>?;
+
+                // Определяем кто собеседник (не текущий пользователь)
+                Map<String, dynamic>? otherUser;
+                if (userA?['id'] == currentUserId) {
+                  otherUser = userB; // Если я userA, то собеседник userB
+                } else {
+                  otherUser = userA; // Если я userB, то собеседник userA
+                }
+
+                final messages = chat['messages'] as List<dynamic>? ?? [];
+                final lastMessage = messages.isNotEmpty ? messages.first : null;
+
+                return {
+                  'id': chat['id'],
+                  'chatId': chat['id'],
+                  'name': otherUser?['fullName'] ?? otherUser?['phone'] ??
+                      'Неизвестный пользователь',
+                  'lastMessage': lastMessage?['content'] ?? 'Нет сообщений',
+                  'time': _formatTime(lastMessage?['createdAt']),
+                  'isOnline': false,
+                  'unreadCount': chat['unreadCount'] ?? 0,
+                  'avatar': otherUser?['avatarUrl'],
+                  'otherUserId': otherUser?['id'],
+                };
+              }).toList();
+
+              return ListView.builder(
+                itemCount: conversations.length,
+                itemBuilder: (context, index) {
+                  final conversation = conversations[index];
+                  return ListTile(
+                    leading: Stack(
+                      children: [
+                        CircleAvatar(
+                          radius: 28,
+                          backgroundColor: Colors.grey[300],
+                          backgroundImage: conversation['avatar'] != null
+                              ? NetworkImage(conversation['avatar'])
+                              : null,
+                          child: conversation['avatar'] == null
+                              ? const Icon(Icons.person, color: Colors.grey)
+                              : null,
                         ),
+                        if (conversation['isOnline'])
+                          Positioned(
+                            bottom: 0,
+                            right: 0,
+                            child: Container(
+                              width: 16,
+                              height: 16,
+                              decoration: BoxDecoration(
+                                color: Colors.green,
+                                shape: BoxShape.circle,
+                                border: Border.all(
+                                    color: Colors.white, width: 2),
+                              ),
+                            ),
+                          ),
+                      ],
+                    ),
+                    title: Text(
+                      conversation['name'],
+                      style: const TextStyle(
+                        fontWeight: FontWeight.w600,
                       ),
-                  ],
-                ),
-                title: Text(
-                  conversation['name'],
-                  style: const TextStyle(
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
-                subtitle: Text(
-                  conversation['lastMessage'],
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: TextStyle(
-                    color: conversation['unreadCount'] > 0
-                        ? Colors.black
-                        : Colors.grey[600],
-                    fontWeight: conversation['unreadCount'] > 0
-                        ? FontWeight.w500
-                        : FontWeight.normal,
-                  ),
-                ),
-                trailing: Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  crossAxisAlignment: CrossAxisAlignment.end,
-                  children: [
-                    Text(
-                      conversation['time'],
+                    ),
+                    subtitle: Text(
+                      conversation['lastMessage'],
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
                       style: TextStyle(
                         color: conversation['unreadCount'] > 0
-                            ? const Color(0xFF2E7D5F)
+                            ? Colors.black
                             : Colors.grey[600],
-                        fontSize: 12,
+                        fontWeight: conversation['unreadCount'] > 0
+                            ? FontWeight.w500
+                            : FontWeight.normal,
                       ),
                     ),
-                    if (conversation['unreadCount'] > 0) ...[
-                      const SizedBox(height: 4),
-                      Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                        decoration: const BoxDecoration(
-                          color: Color(0xFF2E7D5F),
-                          shape: BoxShape.circle,
-                        ),
-                        child: Text(
-                          conversation['unreadCount'].toString(),
-                          style: const TextStyle(
-                            color: Colors.white,
+                    trailing: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      crossAxisAlignment: CrossAxisAlignment.end,
+                      children: [
+                        Text(
+                          conversation['time'],
+                          style: TextStyle(
+                            color: conversation['unreadCount'] > 0
+                                ? const Color(0xFF2E7D5F)
+                                : Colors.grey[600],
                             fontSize: 12,
-                            fontWeight: FontWeight.bold,
                           ),
                         ),
-                      ),
-                    ],
-                  ],
-                ),
-                onTap: () async {
-                  final result = await Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                      builder: (context) => ConversationScreen(
-                        chatId: conversation['chatId'],
-                        otherUserId: conversation['otherUserId'],
-                        userName: conversation['name'],
-                        avatarUrl: conversation['avatar'],
-                      ),
+                        if (conversation['unreadCount'] > 0) ...[
+                          const SizedBox(height: 4),
+                          Container(
+                            padding: const EdgeInsets.symmetric(
+                                horizontal: 6, vertical: 2),
+                            decoration: const BoxDecoration(
+                              color: Color(0xFF2E7D5F),
+                              shape: BoxShape.circle,
+                            ),
+                            child: Text(
+                              conversation['unreadCount'].toString(),
+                              style: const TextStyle(
+                                color: Colors.white,
+                                fontSize: 12,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ],
                     ),
-                  );
+                    onTap: () async {
+                      final result = await Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (context) =>
+                              ConversationScreen(
+                                chatId: conversation['chatId'],
+                                otherUserId: conversation['otherUserId'],
+                                userName: conversation['name'],
+                                avatarUrl: conversation['avatar'],
+                              ),
+                        ),
+                      );
 
-                  // Обновляем список чатов если вернулись из разговора
-                  if (result == true) {
-                    _refreshChats();
-                  }
+                      if (result == true) {
+                        _refreshChats();
+                      }
+                    },
+                  );
                 },
               );
             },
@@ -314,5 +334,15 @@ class _ChatScreenState extends State<ChatScreen> {
         ],
       ),
     );
+  }
+
+  Future<String?> _getCurrentUserId() async {
+    try {
+      final profile = await ApiService.user.getProfile();
+      return profile?['id']?.toString();
+    } catch (e) {
+      print('Ошибка получения ID пользователя: $e');
+      return null;
+    }
   }
 }

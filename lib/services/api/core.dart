@@ -4,7 +4,7 @@ import 'dart:io';
 import 'package:shared_preferences/shared_preferences.dart';
 
 class CoreApi {
-  static const _baseUrl = '192.168.161.227:6969';
+  static const _baseUrl = '192.168.161.79:6969';
   static const _basePath = '/api';
 
   static Future<String?> _getToken() async {
